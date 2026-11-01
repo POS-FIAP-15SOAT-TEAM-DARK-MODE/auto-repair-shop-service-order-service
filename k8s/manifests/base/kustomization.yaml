@@ -1,12 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: auto-repair-shop
-
-# The app's Kubernetes workload only. Networking is owned by Terraform in
+# The service-order-service workload only. Networking is owned by Terraform in
 # auto-repair-shop-infra-k8s; the database (RDS) by auto-repair-shop-infra-db.
+# All objects carry the service-order-service prefix: every service shares the
+# auto-repair-shop namespace (created by the deploy workflow).
 resources:
-  - namespace.yaml
   - configmap.yaml
   - rbac.yaml
   - deployment.yaml
@@ -15,5 +14,5 @@ resources:
   - migrate-job.yaml
 
 images:
-  - name: auto-repair-shop
+  - name: auto-repair-shop-service-order-service
     newTag: dev

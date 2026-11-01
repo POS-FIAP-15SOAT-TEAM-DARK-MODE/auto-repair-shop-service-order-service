@@ -1,15 +1,15 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate
+  name: service-order-service-db-migrate
   labels:
-    app: db-migrate
+    app: service-order-service-db-migrate
 spec:
   backoffLimit: 6
   template:
     metadata:
       labels:
-        app: db-migrate
+        app: service-order-service-db-migrate
     spec:
       restartPolicy: OnFailure
       # migrate/migrate does not wait for the DB; block until it accepts conns.
@@ -22,7 +22,9 @@ spec:
             - until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER"; do echo 'waiting for database...'; sleep 2; done
           envFrom:
             - configMapRef:
-                name: app-config
+                name: service-order-service-config
+            - secretRef:
+                name: service-order-service-secrets
       containers:
         - name: migrate
           image: migrate/migrate:v4.17.1
@@ -33,20 +35,15 @@ spec:
             - up
           envFrom:
             - configMapRef:
-                name: app-config
-          env:
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: POSTGRES_PASSWORD
+                name: service-order-service-config
+            - secretRef:
+                name: service-order-service-secrets
           volumeMounts:
             - name: migrations
               mountPath: /migrations
       volumes:
-        # db-migrations is generated from the repo's migrations/ dir by the
-        # Makefile (`make migrations`) to keep a single source of truth without
-        # copying SQL into the manifests tree.
+        # service-order-service-migrations is created by the deploy workflow from
+        # the repo's migrations/ dir, so SQL is not copied into the manifests tree.
         - name: migrations
           configMap:
-            name: db-migrations
+            name: service-order-service-migrations

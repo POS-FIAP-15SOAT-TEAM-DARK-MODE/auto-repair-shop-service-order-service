@@ -1,19 +1,24 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: app-config
+  name: service-order-service-config
   labels:
-    app: auto-repair-shop
-# Non-sensitive runtime config (mirrors .env). Sensitive values live in the
-# Secret. POSTGRES_HOST points at the in-cluster Postgres by default and is
-# overridden to the RDS endpoint in the aws overlay.
+    app: service-order-service
+# Non-sensitive runtime config. Secret values (POSTGRES_USER/PASSWORD/DB,
+# JWT_SECRET, INTERNAL_TOKEN) live in the service-order-service-secrets Secret.
+# POSTGRES_HOST, SO_SAGA_REPLIES_QUEUE_URL, SAGA_COMMANDS_TOPIC_ARN and
+# SO_EVENTS_TOPIC_ARN are filled in per environment by the deploy workflow
+# (RDS endpoint and SNS/SQS resources derived by convention).
 data:
-  POSTGRES_USER: "postgres"
-  POSTGRES_DB: "autorepairshop"
-  POSTGRES_HOST: "postgres"
   POSTGRES_PORT: "5432"
-  JWT_EXPIRES_IN: "24h"
-  BCRYPT_COST: "12"
+  POSTGRES_SSLMODE: "require"
+  AWS_REGION: "us-east-1"
   LOG_LEVEL: "INFO"
-  PORT: "8080"
-  POSTGRES_SSLMODE: "disable"
+  PORT: "8086"
+  CUSTOMER_URL: "http://customer-service:8081"
+  CATALOG_URL: "http://catalog-service:8082"
+  SAGA_STEP_TIMEOUT: "2m"
+  SAGA_PAYMENT_TIMEOUT: "24h"
+  SO_SAGA_REPLIES_QUEUE_URL: ""
+  SAGA_COMMANDS_TOPIC_ARN: ""
+  SO_EVENTS_TOPIC_ARN: ""

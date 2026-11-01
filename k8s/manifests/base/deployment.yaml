@@ -1,40 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: auto-repair-shop
+  name: service-order-service
   labels:
-    app: auto-repair-shop
+    app: service-order-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: auto-repair-shop
+      app: service-order-service
   template:
     metadata:
       labels:
-        app: auto-repair-shop
+        app: service-order-service
     spec:
-      serviceAccountName: auto-repair-shop
+      serviceAccountName: service-order-service
       # The db-migrate Job and this Deployment are applied by the same
-      # `kubectl apply -k`, with no ordering guarantee between them — without
-      # this, the app can boot (and run its DB seed) before migrations have
-      # created the schema, failing with a silently-discarded 42P01 and
-      # leaving the app running with zero seed data.
+      # `kubectl apply -k`, with no ordering guarantee between them. Without
+      # this wait, the app can start before the schema exists.
       initContainers:
         - name: wait-for-migrations
-          # bitnami/kubectl:1.31 was removed from Docker Hub (Bitnami deprecated
-          # legacy container tags), causing ImagePullBackOff on every app pod.
-          # alpine/k8s bundles kubectl and is confirmed pullable/maintained.
           image: alpine/k8s:1.31.2
           command:
             - sh
             - -c
             - |
-              until kubectl get job/db-migrate -n "$POD_NAMESPACE" >/dev/null 2>&1; do
-                echo 'waiting for the db-migrate Job to be created...'
+              until kubectl get job/service-order-service-db-migrate -n "$POD_NAMESPACE" >/dev/null 2>&1; do
+                echo 'waiting for the service-order-service-db-migrate Job to be created...'
                 sleep 2
               done
-              kubectl wait --for=condition=complete --timeout=300s -n "$POD_NAMESPACE" job/db-migrate
+              kubectl wait --for=condition=complete --timeout=300s -n "$POD_NAMESPACE" job/service-order-service-db-migrate
           env:
             - name: POD_NAMESPACE
               valueFrom:
@@ -43,16 +38,16 @@ spec:
       containers:
         - name: app
           # Overridden per overlay via the kustomize `images:` transformer.
-          image: auto-repair-shop:dev
+          image: auto-repair-shop-service-order-service:dev
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 8086
           envFrom:
             - configMapRef:
-                name: app-config
+                name: service-order-service-config
             - secretRef:
-                name: app-secrets
+                name: service-order-service-secrets
           livenessProbe:
             httpGet:
               path: /ping

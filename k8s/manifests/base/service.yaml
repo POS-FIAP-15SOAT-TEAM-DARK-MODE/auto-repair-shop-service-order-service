@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: auto-repair-shop
+  name: service-order-service
   labels:
-    app: auto-repair-shop
+    app: service-order-service
 spec:
   type: ClusterIP
   selector:
-    app: auto-repair-shop
+    app: service-order-service
   ports:
     - name: http
-      port: 80
+      port: 8086
       targetPort: http
