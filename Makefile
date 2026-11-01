@@ -1,6 +1,9 @@
 -include .env
 export
 
+# Stubs of Customer and Catalog start with `make up` (see local/stubs).
+export COMPOSE_PROFILES ?= stubs
+
 run:
 	go run cmd/service/main.go
 
