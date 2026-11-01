@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/logger"
+	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/uow"
 	"go.uber.org/zap"
 )
 
@@ -89,12 +90,16 @@ func (c *Consumer) Handle(ctx context.Context, m Message) error {
 		return c.delete(ctx, m)
 	}
 
-	if err := h(ctx, tx, env); err != nil {
+	// The handler joins this transaction through the context, so repositories and the outbox
+	// write inside it. Post-commit hooks run after the commit below.
+	txCtx := uow.WithTx(ctx, tx)
+	if err := h(txCtx, tx, env); err != nil {
 		return fmt.Errorf("handle %s: %w", env.Type, err)
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	uow.RunAfterCommit(txCtx)
 	return c.delete(ctx, m)
 }
 
