@@ -15,7 +15,7 @@ func TestEnqueue(t *testing.T) {
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO outbox").
@@ -33,7 +33,7 @@ func TestEnqueue(t *testing.T) {
 func TestEnqueue_WithTargetAndError(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectBegin()
 	mock.ExpectExec("INSERT INTO outbox").

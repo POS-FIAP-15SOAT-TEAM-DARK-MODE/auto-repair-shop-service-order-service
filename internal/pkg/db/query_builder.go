@@ -122,24 +122,24 @@ func (q *queryBuilder) Build() (string, []any) {
 	}
 
 	if q.rawOrderExpr != "" {
-		sb.WriteString(fmt.Sprintf(" ORDER BY %s", q.rawOrderExpr))
+		fmt.Fprintf(&sb, " ORDER BY %s", q.rawOrderExpr)
 	} else if q.orderField != "" {
 		if q.orderDirection == "" {
 			q.orderDirection = ASC
 		}
 
-		sb.WriteString(fmt.Sprintf(" ORDER BY %s %s", q.orderField, q.orderDirection))
+		fmt.Fprintf(&sb, " ORDER BY %s %s", q.orderField, q.orderDirection)
 	}
 
 	if q.limit > 0 {
 		q.counter++
-		sb.WriteString(fmt.Sprintf(" LIMIT $%d", q.counter))
+		fmt.Fprintf(&sb, " LIMIT $%d", q.counter)
 		q.args = append(q.args, q.limit)
 	}
 
 	if q.offset > 0 {
 		q.counter++
-		sb.WriteString(fmt.Sprintf(" OFFSET $%d", q.counter))
+		fmt.Fprintf(&sb, " OFFSET $%d", q.counter)
 		q.args = append(q.args, q.offset)
 	}
 

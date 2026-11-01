@@ -103,7 +103,7 @@ func (r *Relay) selectPending(ctx context.Context, tx *sql.Tx) ([]pendingRow, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var batch []pendingRow
 	for rows.Next() {

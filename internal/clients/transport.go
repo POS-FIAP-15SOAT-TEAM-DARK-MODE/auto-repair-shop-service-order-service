@@ -65,7 +65,7 @@ func (t *Transport) Do(ctx context.Context, method, path string, body, out any, 
 		attempts = 2
 	}
 
-	var lastErr error = domain.ErrUpstreamUnavailable
+	var lastErr = domain.ErrUpstreamUnavailable
 	for attempt := 0; attempt < attempts; attempt++ {
 		status, data, err := t.send(ctx, method, path, raw)
 		if err != nil {

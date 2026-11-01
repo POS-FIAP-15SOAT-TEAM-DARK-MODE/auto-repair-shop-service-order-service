@@ -30,7 +30,7 @@ var pendingCols = []string{"id", "topic", "target", "type", "body"}
 func TestRelay_RunOnce_PublishesAndMarks(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pub := &fakePublisher{}
 	relay := NewRelay(db, pub, map[string]string{"billing-events": "arn:events"})
@@ -56,7 +56,7 @@ func TestRelay_RunOnce_PublishesAndMarks(t *testing.T) {
 func TestRelay_RunOnce_PublishFailureKeepsRow(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pub := &fakePublisher{fail: map[string]bool{`{"a":1}`: true}}
 	relay := NewRelay(db, pub, map[string]string{"billing-events": "arn:events"})
@@ -79,7 +79,7 @@ func TestRelay_RunOnce_PublishFailureKeepsRow(t *testing.T) {
 func TestRelay_RunOnce_UnknownTopicIsNotPublished(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	pub := &fakePublisher{}
 	relay := NewRelay(db, pub, map[string]string{})
@@ -98,7 +98,7 @@ func TestRelay_RunOnce_UnknownTopicIsNotPublished(t *testing.T) {
 func TestRelay_RunOnce_DBErrors(t *testing.T) {
 	t.Run("begin fails", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		mock.ExpectBegin().WillReturnError(errors.New("no conn"))
 		_, err := NewRelay(db, &fakePublisher{}, nil).RunOnce(context.Background())
 		assert.EqualError(t, err, "no conn")
@@ -106,7 +106,7 @@ func TestRelay_RunOnce_DBErrors(t *testing.T) {
 
 	t.Run("query fails", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		mock.ExpectBegin()
 		mock.ExpectQuery("FOR UPDATE").WillReturnError(errors.New("query boom"))
 		_, err := NewRelay(db, &fakePublisher{}, nil).RunOnce(context.Background())
@@ -115,7 +115,7 @@ func TestRelay_RunOnce_DBErrors(t *testing.T) {
 
 	t.Run("scan fails", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		mock.ExpectBegin()
 		mock.ExpectQuery("FOR UPDATE").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("not-a-number"))
 		_, err := NewRelay(db, &fakePublisher{}, nil).RunOnce(context.Background())
@@ -124,7 +124,7 @@ func TestRelay_RunOnce_DBErrors(t *testing.T) {
 
 	t.Run("mark fails", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		mock.ExpectBegin()
 		mock.ExpectQuery("FOR UPDATE").WillReturnRows(sqlmock.NewRows(pendingCols).AddRow(1, "t", nil, "T", `{}`))
 		mock.ExpectExec("UPDATE outbox").WillReturnError(errors.New("update boom"))
@@ -135,7 +135,7 @@ func TestRelay_RunOnce_DBErrors(t *testing.T) {
 
 	t.Run("commit fails", func(t *testing.T) {
 		db, mock, _ := sqlmock.New()
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		mock.ExpectBegin()
 		mock.ExpectQuery("FOR UPDATE").WillReturnRows(sqlmock.NewRows(pendingCols))
 		mock.ExpectCommit().WillReturnError(errors.New("commit boom"))
@@ -147,7 +147,7 @@ func TestRelay_RunOnce_DBErrors(t *testing.T) {
 func TestRelay_Run_StopsOnCancel(t *testing.T) {
 	db, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
