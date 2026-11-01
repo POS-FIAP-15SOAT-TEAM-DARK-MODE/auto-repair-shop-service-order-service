@@ -4,58 +4,54 @@
 
 | Code name | Business concept |
 |---|---|
-| `Work` | Billable service: name, description, unit price, ACTIVE/INACTIVE |
-| `Supply` | Part/supply with stock quantity, unit price, optimistic-lock `Version` |
-| `ServiceOrder` | Central aggregate: Customer + Vehicle + []Work + []Supply |
-| `ServiceOrderHistory` | Immutable record of every status transition |
-| `Customer` | Identified by CPF (individual) or CNPJ (company); linked 1:1 to a User |
-| `User` | System account: name, email, bcrypt-hashed password, roles |
-| `Vehicle` | License plate + brand/model/year, always linked to a Customer |
+| `ServiceOrder` | Aggregate: customer and vehicle snapshots, works, supplies, status, `total_amount`. Id is a ULID |
+| `WorkItem` | Billable service copied from the Catalog when added: name, description, unit price |
+| `SupplyItem` | Part reserved in the Catalog: name, description, unit price, version, quantity, reservation id |
+| `Saga` (`saga_instance`) | The approval flow of one order: step, status, deadline, which commands were sent |
+| `CustomerSnapshot`, `VehicleSnapshot` | Data copied from Customer and Vehicle at creation; never re-read |
 
-## Service Order Status Lifecycle
+## Status Lifecycle
 
 ```
 NEW → RECEIVED → IN_DIAGNOSIS → AWAITING_APPROVAL → IN_PROGRESS → COMPLETED → DELIVERED
-                                        ↓
-                                   REJECTED (terminal)
+                                                         ↓              ↓
+                                                      REJECTED      CANCELLED   (terminal)
 ```
 
-`AddWorks`, `RemoveWork`, `AddSupplies`, `RemoveSupply` require status = `NEW` → `ErrServiceOrderNotNew` otherwise.
-Budget becomes immutable once status reaches `IN_PROGRESS`.
+- Works and supplies change only in `NEW` (works) and `IN_DIAGNOSIS` (supplies). Otherwise
+  `ErrServiceOrderNotNew` / `ErrServiceOrderNotInDiagnosis` (409).
+- `AWAITING_APPROVAL` exists only while the customer has not decided. `accept` moves the order to
+  `IN_PROGRESS` at once; payment and execution do not change the status.
+- `IN_PROGRESS → REJECTED` and `IN_PROGRESS → CANCELLED` are allowed only from the saga.
+- `REJECTED` is never cancelable. A status change is always accompanied by a
+  `ServiceOrderStatusChanged` event and a status-transition log.
 
-## RBAC
+## Saga Rules (summary)
+- `send` starts the saga at `BUDGET`; the order stays `IN_DIAGNOSIS` until `BudgetGenerated`.
+- Replies are processed only when the saga is `RUNNING` and at the expected `step`; otherwise ignored.
+- Deadlines: `SAGA_STEP_TIMEOUT` for each step, `SAGA_PAYMENT_TIMEOUT` for payment. A timed-out
+  `BUDGET` step fails the saga and keeps the order in `IN_DIAGNOSIS`.
+- Compensation order: `CancelExecution` → `RefundPayment` → `CancelBudget` → `ReleaseStock`, only for
+  what the saga flags show was sent. Compensations are idempotent, never "delete".
 
-Roles: `ADMIN`, `ATTENDANT`, `MECHANIC`, `CUSTOMER`
-
-| Role | Scope |
-|---|---|
-| `ADMIN` | Unrestricted, exclusive (cannot combine with other roles) |
-| `ATTENDANT` | Customers, vehicles, service orders, works, supplies — no user management |
-| `MECHANIC` | Read service orders; add/remove works and supplies; status transitions |
-| `CUSTOMER` | Own service order status + own budget approve/reject (scoped by `customerId` in JWT) |
-
-Role groups in `domain/roles.go`: `AttendantRoles`, `MechanicRoles`, `CustomerRoles`, `AttendantAndMechanicRoles`.
-
-## User & Customer Split
-- Creating a Customer automatically creates a linked User with role `CUSTOMER`.
-- Default password = CPF (individual) or CNPJ (company), bcrypt-hashed (min cost 12).
-- Deleting a Customer must also delete/deactivate the associated User.
-
-## Budget Formula
+## Pricing
 ```
 total = Σ work.unit_price + Σ (supply.unit_price × quantity)
 ```
-Auto-recalculate whenever works or supplies change. Immutable once status reaches `IN_PROGRESS`.
+Recalculated in the same transaction on every addition or removal of a work or supply.
 
-## Stock Decrement Pattern
-```sql
-UPDATE supply SET stock_quantity = stock_quantity - $amount, updated_at = NOW()
-WHERE id = $id AND stock_quantity >= $amount
-```
-If `RowsAffected == 0` → return `ErrSupplyOutOfStock`. No `SELECT FOR UPDATE` — the conditional UPDATE itself prevents overselling. Stock restored on `RemoveSupply` via `RestoreStock` in the same transaction.
+## Supply Reservation
+Supplies are reserved in the Catalog (`POST /internal/reservations`) when added, and released
+(`DELETE /internal/reservations/{id}`) when removed or when the order is cancelled or rejected
+(`ReleaseStock`). A failed reservation returns the Catalog error; reservations already made are
+released when the order cannot be stored. A Catalog `404` on release means "already released".
+
+## Roles
+Constants and groups live in `internal/pkg/auth/roles.go`: `ADMIN`, `ATTENDANT`, `MECHANIC`, `CUSTOMER`.
+`ADMIN` is accepted on every protected route. The customer role is checked against the `user_id`
+in the JWT claims for `accept` and `reject`; a different user gets `403`.
 
 ## Input Validation
-- CPF: format `###.###.###-##` + check digit algorithm.
-- CNPJ: format `##.###.###/####-##` + check digit algorithm.
-- License plate: old `ABC-1234` and Mercosul `ABC1D23`.
-- Monetary: `NUMERIC(10,2)` — never `float64`.
+- Identifiers must be non-empty path values (`400` otherwise).
+- Supply `amount` must be positive; `services` and `supplies` lists must not be empty where required.
+- Money is `NUMERIC(10,2)` in the database and `decimal.Decimal` in Go. Never `float64`.

@@ -1,8 +1,8 @@
 # Playbook: Add Migration
 
-## 1. Determine Next Version Number
+## 1. Next Version
 ```bash
-ls migrations/ | sort | tail -5
+ls migrations/ | sort | tail -4
 ```
 
 ## 2. Create Files
@@ -10,27 +10,26 @@ ls migrations/ | sort | tail -5
 touch migrations/<NNNNNN>_<description>.up.sql
 touch migrations/<NNNNNN>_<description>.down.sql
 ```
+Use the next six-digit version after the last file.
 
 ## 3. Write `up.sql`
-Rules:
-- `NUMERIC(10,2)` for monetary columns — never `FLOAT`.
-- `UUID` for most IDs; use ULID pattern only for service order tables.
-- `TIMESTAMPTZ DEFAULT NOW()` for timestamps.
-- Add `CHECK` constraints for status/enum columns (list all valid values).
-- Add all required foreign key constraints.
-- Add indexes on: CPF, CNPJ, email, status, FK columns, and any column used in filters.
+- `NUMERIC(10,2)` for money; never `FLOAT`.
+- `TIMESTAMP WITH TIME ZONE` for timestamps.
+- `CHECK` constraints for status and step columns, listing every valid value.
+- Foreign keys to the parent table; `ON DELETE CASCADE` only for child rows of an order.
+- Indexes on status, foreign key columns and any column used in filters.
 
 ## 4. Write `down.sql`
-- Must fully reverse the `up.sql`.
-- Drop in reverse order: indexes → FKs → columns → tables.
+Reverse the `up.sql` in the reverse order: indexes, then foreign keys, columns and tables.
 
 ## 5. Apply and Verify
 ```bash
-make migrate-up
-make migrate-status
+make migrate-up        # uses MIGRATE_DATABASE from the Makefile target
+migrate -path migrations -database "$DSN" version
 ```
+Integration tests in CI apply all migrations before running.
 
 ## Never
-- Modify an existing migration file after it has been applied.
-- Drop or alter existing columns (add new ones, leave old ones in place as deprecated).
-- Change the database schema manually.
+- Edit a migration that has already run in any environment.
+- Drop or rename existing columns (add the new column, keep the old one as deprecated).
+- Change the schema by hand in any environment.

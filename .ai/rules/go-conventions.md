@@ -1,34 +1,34 @@
 # Go Conventions
 
 ## Tech Stack
-Go 1.26 · Gin · PostgreSQL 15 · `lib/pq` (raw SQL, no ORM) · `golang-migrate` · `golang-jwt/jwt/v5` · Zap · Testify · Mockery v2 · `shopspring/decimal` · `google/uuid` · `oklog/ulid/v2`
+Go 1.26 · Gin · PostgreSQL 15 · `lib/pq` (raw SQL, no ORM) · `golang-migrate` · `golang-jwt/jwt/v5` ·
+Zap · Testify · mockery v2 · `shopspring/decimal` · `google/uuid` · `oklog/ulid/v2`.
 
-## ID Types
-- `google/uuid` — all entity IDs except service orders.
-- `oklog/ulid/v2` — `ServiceOrder` and `ServiceOrderHistory` IDs (sortable by creation time).
+## IDs
+- `oklog/ulid/v2` for `service_order` ids (sortable by creation time, stored as `VARCHAR(26)`).
+- `google/uuid` for every other id (`VARCHAR(36)` columns, `UUID` for `processed_message` and `outbox.message_id`).
+- Ids are generated in the service or the saga, never in SQL defaults.
 
 ## Monetary Values
-Always use `shopspring/decimal.Decimal`, never `float64` or `float32`. DB column type: `NUMERIC(10,2)`.
+Use `shopspring/decimal.Decimal`. JSON money fields are strings (`"221.00"`), never numbers.
+Database column type: `NUMERIC(10,2)`.
 
 ## No Framework Leakage
-- Domain structs: zero imports from `gin`, `pq`, or any `infra` package.
-- Service layer: only imports domain interfaces and `uow` package.
-- Gin types are confined to `infra/handler/`.
+- Domain: no imports of `gin`, `lib/pq`, `net/http` or adapter packages.
+- Service and saga: depend on domain interfaces and `internal/pkg/uow`, not on HTTP or SQL types.
+- Gin types stay in `controller.go`, `routes.go` and `internal/app/routing`.
 
-## Mock Generation
-Mocks live in `internal/domain/mocks/` and are generated via `//go:generate` directives on interface files:
-```go
-//go:generate go run github.com/vektra/mockery/v2 --name=CustomerRepository
-```
-Run `make mockgen` to regenerate. Never edit generated mock files manually.
+## Mocks
+`internal/pkg/uow/uow.go` carries the `//go:generate` directive for the `Executor` mock
+(`internal/pkg/uow/mocks/`). Other interfaces get a directive next to their declaration.
+Run `make mockgen`. Never edit generated files by hand.
 
 ## Error Patterns
-- Domain errors: `var ErrXxx = errors.New("...")` in the domain package.
-- Services return domain errors; handlers map them to HTTP codes via a type switch.
-- Never expose internal error details in HTTP responses.
-
-## In-Memory Implementations
-Every domain has both `postgres.go` and `in_memory.go` in `infra/repository/<domain>/`. The in-memory variant is used exclusively for unit tests.
+- Domain errors are sentinels (`var ErrXxx = errors.New(...)`) in the domain package.
+- HTTP status is registered next to the sentinels (`internal/service_order/http_errors.go`) with
+  `web.RegisterErrorStatus`; handlers never switch on error text.
+- Upstream failures become `ErrUpstreamUnavailable` (502); never expose internal error details.
 
 ## Configuration
-All env vars via `internal/pkg/env/`: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `BCRYPT_COST`, `PORT` (default `8080`). Makefile reads from `.env` and exports automatically.
+Read through `internal/pkg/env` (`GetString`, `GetInt`, `GetTimeDuration`). Required settings are
+listed in `.env.example`. Messaging is disabled, with a warning, when the queue or topic variables are empty.

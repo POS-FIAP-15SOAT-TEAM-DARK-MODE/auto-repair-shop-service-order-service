@@ -1,60 +1,63 @@
 # API
 
-## Versioning
-All endpoints under `/v1/`. Swagger UI at `http://localhost:8080/swagger/index.html`.
+## Versioning and Routing
+Public routes live under `/v1`. The gateway forwards them. `/internal/*` is never routed by the gateway.
+Swagger UI: `http://localhost:8086/swagger/index.html`. The spec is `docs/swagger.yaml`, embedded in the binary (`docs/embed.go`).
 
 ## Endpoints
 
 ```
-POST   /auth/register                              ADMIN
-POST   /auth/login                                 public
-POST   /customers                                  ADMIN, ATTENDANT
-GET    /customers/:id                              ADMIN, ATTENDANT
-GET    /customers                                  ADMIN, ATTENDANT
-PUT    /customers/:id                              ADMIN, ATTENDANT
-DELETE /customers/:id                              ADMIN, ATTENDANT
-POST   /works                                      ADMIN, ATTENDANT
-GET    /works                                      ADMIN, ATTENDANT, MECHANIC
-PUT    /works/:id                                  ADMIN, ATTENDANT, MECHANIC
-DELETE /works/:id                                  ADMIN, ATTENDANT, MECHANIC
-POST   /vehicles                                   ADMIN, ATTENDANT, MECHANIC
-GET    /vehicles                                   ADMIN, ATTENDANT, MECHANIC  (by license plate)
-PUT    /vehicles/:id                               ADMIN, ATTENDANT, MECHANIC
-DELETE /vehicles/:id                               ADMIN, ATTENDANT, MECHANIC
-GET    /vehicles/:customerId                       ADMIN, ATTENDANT  (list by customer)
-POST   /supplies                                   ADMIN, ATTENDANT, MECHANIC
-GET    /supplies                                   ADMIN, ATTENDANT, MECHANIC
-PUT    /supplies/:id                               ADMIN, ATTENDANT, MECHANIC
-POST   /service-order                              ADMIN, ATTENDANT
-GET    /service-order/:id/history                  ADMIN, ATTENDANT
-GET    /service-order/:id/services                 ADMIN, ATTENDANT
-POST   /service-order/:id/services                 ADMIN, ATTENDANT
-DELETE /service-order/:id/services/:serviceId      ADMIN, ATTENDANT
-GET    /service-order/:id/supplies                 ADMIN, ATTENDANT
-POST   /service-order/:id/supplies                 ADMIN, ATTENDANT
-DELETE /service-order/:id/supplies/:supplyId       ADMIN, ATTENDANT
+POST   /v1/service-order                           ADMIN, ATTENDANT
+GET    /v1/service-order                           ADMIN, ATTENDANT, MECHANIC
+GET    /v1/service-order/:id                       ADMIN, ATTENDANT, MECHANIC
+GET    /v1/service-order/:id/status                public (no JWT)
+POST   /v1/service-order/:id/works                 ADMIN, ATTENDANT              (status NEW)
+GET    /v1/service-order/:id/works                 ADMIN, ATTENDANT, MECHANIC
+DELETE /v1/service-order/:id/works/:serviceId      ADMIN, ATTENDANT              (status NEW)
+POST   /v1/service-order/:id/supplies              ADMIN, MECHANIC               (status IN_DIAGNOSIS)
+GET    /v1/service-order/:id/supplies              ADMIN, ATTENDANT, MECHANIC
+DELETE /v1/service-order/:id/supplies/:supplyId    ADMIN, MECHANIC               (status IN_DIAGNOSIS)
+PUT    /v1/service-order/:id/received              ADMIN, ATTENDANT
+PUT    /v1/service-order/:id/start-diagnosis       ADMIN, MECHANIC
+PUT    /v1/service-order/:id/send                  ADMIN, MECHANIC               (IN_DIAGNOSIS, no saga running)
+PUT    /v1/service-order/:id/accept                ADMIN, CUSTOMER               (AWAITING_APPROVAL; caller is the customer)
+PUT    /v1/service-order/:id/reject                ADMIN, CUSTOMER               (AWAITING_APPROVAL; caller is the customer)
+PUT    /v1/service-order/:id/cancel                ADMIN, ATTENDANT, MECHANIC    (cancelable status)
+PUT    /v1/service-order/:id/deliver               ADMIN, ATTENDANT              (COMPLETED)
+GET    /ping, GET /metrics                         operations
 ```
 
-## Request/Response Conventions
-- All bodies: JSON.
-- Timestamps: UTC ISO 8601.
-- IDs: UUID strings (ULID strings for service order IDs).
-- Pagination: `?limit=N&offset=N`.
+Internal (not in Swagger, not routed by the gateway):
+```
+GET    /internal/service-orders/exists?customer_id= | ?vehicle_id=     X-Internal-Token
+```
+
+## Request and Response Conventions
+- JSON bodies. Request fields: `client`, `vehicle`, `works`, `services`, `supplies` (`id`, `amount`).
+- Response fields are camelCase (`totalValue`, `companyName`, `licensePlate`, `brandModel`).
+- Money: `totalValue` is a number in list and detail responses; work and supply prices are decimal strings.
+- Timestamps: UTC, RFC 3339.
+- Ids: ULID for orders, UUID strings for customers, vehicles, works and supplies.
+- Lists: `page` (1-based), `pageSize`, plus `status`, `customerId`, `vehicleId`, `sort_by`, `sort_order`.
 
 ## Error Format
 ```json
-{ "error": "Human-readable message", "code": "MACHINE_READABLE_CODE" }
+{ "code": 409, "errors": ["service order is not in NEW status"] }
 ```
+`error` (single message) is used by some statuses. Messages never contain CPF, CNPJ, tokens or stack traces.
 
-| HTTP | Meaning |
+| HTTP | Meaning in this service |
 |---|---|
-| 400 | Validation error |
-| 401 | Missing or invalid auth |
-| 403 | Forbidden (wrong role) |
-| 404 | Not found |
-| 409 | Conflict |
-| 422 | Business rule violation |
+| 400 | Malformed body, empty id, empty service list |
+| 401 | Missing or invalid JWT, or missing or wrong `X-Internal-Token` |
+| 403 | Role not allowed, or a customer acting on another customer's order |
+| 404 | Order, customer, vehicle, work, supply or reservation not found |
+| 409 | Status transition not allowed, or a saga is already running or not waiting |
+| 422 | Business rule violation (for example, out of stock, or the internal check without exactly one parameter) |
+| 502 | Customer or Catalog unavailable, or an unexpected upstream answer |
 | 500 | Unexpected error |
 
 ## Swagger
-Every endpoint must have: summary, description, request body schema, response schemas (success + errors), 401/403 documented on all protected endpoints, and role requirements noted.
+Every operation has summary, description, request and response schemas, and the error statuses it can
+return. Protected operations document 401 and 403. 409 is documented on `send`, `accept` and `reject`.
+Update `docs/swagger.yaml` in the same commit as any route change.

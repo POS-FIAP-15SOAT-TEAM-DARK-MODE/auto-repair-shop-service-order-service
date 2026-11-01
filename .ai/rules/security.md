@@ -1,32 +1,32 @@
 # Security
 
 ## JWT
-- All protected endpoints require `Authorization: Bearer <JWT>` — return 401 if missing/invalid.
-- Public endpoints (no auth): `POST /v1/auth/login` and the ping endpoint only.
-- JWT payload must include: `roles` (array) and `customerId` (when applicable).
-- Auth middleware must not make extra DB calls — rely entirely on the JWT payload.
-- Expiry configurable via `JWT_EXPIRES_IN` env var.
+- Protected routes require `Authorization: Bearer <JWT>` (HS256, `JWT_SECRET`, shared with the other services). Missing or invalid token: `401`.
+- Public routes: `GET /ping`, `GET /metrics`, `GET /v1/service-order/:id/status`.
+- The middleware reads the role and the user id from the claims. It makes no database call to authenticate.
+- Customer checks (`accept`, `reject`) compare the claim `user_id` with the snapshot `customer_user_id` of the order.
 
 ## RBAC Enforcement
-- Map roles from the JWT payload; reject out-of-scope access with 403.
-- `ADMIN` is exclusive — a user with ADMIN cannot have other roles.
-- Role constants and groups live in `internal/domain/roles.go`.
-- Groups: `AttendantRoles`, `MechanicRoles`, `CustomerRoles`, `AttendantAndMechanicRoles`.
+- Roles come from `internal/pkg/auth/roles.go`. Route groups are declared in `internal/service_order/routes.go`.
+- Out-of-scope role: `403`. Missing token: `401`.
+- Do not add a route without a role group. A public route must be listed in this file and in `api.md`.
 
-## Passwords
-- bcrypt, default cost factor 10 (`bcrypt.DefaultCost`), configurable via `BCRYPT_COST` env var.
-- Default customer password = their CPF or CNPJ.
-- Never log or return password hashes.
+## Internal Routes
+- `/internal/*` requires the header `X-Internal-Token` equal to `INTERNAL_TOKEN`, compared in constant time.
+- An empty configured token rejects every request (fail closed).
+- The gateway never routes `/internal/*`; the ingress must not expose them either.
+- Outgoing calls to Customer and Catalog send the same header and propagate `X-Request-Id`.
 
-## PII — Never Expose or Log
-CPF, CNPJ, passwords, and JWT tokens must never appear in:
-- HTTP response bodies or headers.
-- Log entries (centralized redaction handled in `internal/pkg/logger/logger.go`).
-- Error messages returned to clients.
+## Personal Data
+- The order stores copies of CPF or CNPJ (`customer_document`), name, e-mail and phone for its own flow.
+  They are never written to logs, error messages or responses other than the detail endpoint that already returns them.
+- Log only ids. Field keys `document`, `cpf`, `cnpj`, `token`, `password` and `authorization` are redacted by `internal/pkg/logger`.
+- Notifications log a masked recipient (`service_order.status_notification_sent`).
+- Use explicit fields (`zap.String("service_order_id", id)`); do not pass whole snapshots or request bodies to the logger.
 
-Avoid `zap.Any` for domain/request objects that may contain PII — use explicit safe fields instead.
+## Secrets
+- Secrets (`POSTGRES_PASSWORD`, `JWT_SECRET`, `INTERNAL_TOKEN`) come from Secrets Manager (`auto-repair-shop-<env>/service-order`) in the clusters, and from `.env` locally. Never commit a real value; `.env.example` holds placeholders only.
 
 ## Input Sanitization
-- Validate all user input at handler layer before passing to service.
-- Use domain validation methods (`customer.Validate()`, etc.) — never trust raw strings.
-- Never expose stack traces or internal error details in production responses.
+- Validate at the controller: ids, lists, amounts. Services and domain do not trust raw strings.
+- Never expose stack traces or raw database errors. Upstream errors become the mapped statuses above.
