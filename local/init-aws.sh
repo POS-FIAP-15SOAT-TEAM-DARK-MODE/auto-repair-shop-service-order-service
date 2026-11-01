@@ -2,7 +2,7 @@
 # Creates the messaging resources of service-order-service in MiniStack (idempotent).
 # Physical names: auto-repair-shop-local-<logical name> (contracts/resources.md).
 # Owned here: saga-commands, so-events, billing-events, execution-events, so-saga-replies,
-# and the test queues that let the integration tests play Billing and Execution.
+# and the test queues that let the integration tests play Billing and Execution (and read so-events).
 set -eu
 
 PREFIX="auto-repair-shop-local"
@@ -81,5 +81,11 @@ for target in billing execution catalog; do
   allow_topics "$test_url" "$test_arn" "$COMMANDS_ARN"
   subscribe "$COMMANDS_ARN" "$test_arn" "$target"
 done
+
+# Test queue: the integration tests read the status changes published by the service.
+so_events_test_url=$(create_queue test-so-events)
+so_events_test_arn=$(queue_arn "$so_events_test_url")
+allow_topics "$so_events_test_url" "$so_events_test_arn" "$SO_EVENTS_ARN"
+subscribe "$SO_EVENTS_ARN" "$so_events_test_arn"
 
 echo "service-order messaging ready: replies=${SO_REPLIES_URL} commands=${COMMANDS_ARN} events=${SO_EVENTS_ARN}"
