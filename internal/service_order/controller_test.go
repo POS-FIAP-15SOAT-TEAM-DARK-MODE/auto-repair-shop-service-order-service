@@ -115,11 +115,11 @@ func TestRoutesRequireAuthenticationAndRole(t *testing.T) {
 	}
 }
 
-func TestExpiredTokenIsForbidden(t *testing.T) {
+func TestExpiredTokenIsUnauthorized(t *testing.T) {
 	f := newFixture(t)
 	tok, err := auth.GenerateToken("staff-1", []auth.Role{auth.ATTENDANT}, time.Now().Add(-time.Hour))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, call(newRouter(f), http.MethodGet, "/v1/service-order", "Bearer "+tok, "").Code)
+	assert.Equal(t, http.StatusUnauthorized, call(newRouter(f), http.MethodGet, "/v1/service-order", "Bearer "+tok, "").Code)
 }
 
 func TestStatusEndpointIsPublic(t *testing.T) {
