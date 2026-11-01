@@ -49,8 +49,8 @@ The Service Order orchestrates the approval saga `service-order-approval`:
 - The SO depends on the message contracts in `docs/fase4/contracts/messaging.md`; a change there must
   be made in every service at the same time.
 - Delivery is at least once and unordered, so every consumer needs deduplication by `message_id`
-  and the order checks described above. The integration tests cover the happy path and the three
-  compensating paths.
+  and the order checks described above. The integration suite must cover the happy path and the
+  compensating paths (see `rules/testing.md`).
 - The orchestrator is a single point of logic inside the SO. It is the only service that changes
   the saga state, so horizontal scaling relies on the transactions and the deadline job being safe
   when several replicas run at once.
