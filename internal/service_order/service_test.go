@@ -364,15 +364,25 @@ func TestRemoveSupplyTreatsMissingReservationAsReleased(t *testing.T) {
 	assert.Empty(t, supplies.Items)
 }
 
-func TestRemoveSupplyFailureLeavesOrderUnchanged(t *testing.T) {
+func TestRemoveSupplyReleaseFailureKeepsUnlinkAndSucceeds(t *testing.T) {
 	f := newFixture(t)
 	f.seed(t, domain.SERVICE_ORDER_STATUS_IN_DIAGNOSIS, nil,
 		[]domain.SupplyItem{{ID: "s1", ReservationID: "res-1", UnitPrice: decimal.RequireFromString("35.50"), Quantity: 1}})
 	f.catalog.releaseErr = errBoom
-	assert.ErrorIs(t, f.svc.RemoveSupply(ctx, soID, "s1"), errBoom)
+	require.NoError(t, f.svc.RemoveSupply(ctx, soID, "s1"), "the unlink is committed; the failed release is only logged")
+	assert.Equal(t, []string{"res-1"}, f.catalog.released)
 	supplies, err := f.svc.GetSupplies(ctx, soID)
 	require.NoError(t, err)
-	assert.Len(t, supplies.Items, 1, "the link stays when the stock could not be released")
+	assert.Empty(t, supplies.Items, "the link is removed even when the stock could not be released")
+}
+
+func TestRemoveSupplyReleasesOnlyAfterUnlinkCommits(t *testing.T) {
+	f := newFixture(t)
+	f.seed(t, domain.SERVICE_ORDER_STATUS_IN_DIAGNOSIS, nil,
+		[]domain.SupplyItem{{ID: "s1", ReservationID: "res-1", UnitPrice: decimal.RequireFromString("35.50"), Quantity: 1}})
+	f.repo.removeSupplyErr = errBoom
+	assert.ErrorIs(t, f.svc.RemoveSupply(ctx, soID, "s1"), errBoom)
+	assert.Empty(t, f.catalog.released, "no release when the unlink fails: the stock stays reserved")
 }
 
 func TestRemoveSupplyRejections(t *testing.T) {

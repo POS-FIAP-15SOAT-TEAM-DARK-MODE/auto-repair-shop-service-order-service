@@ -342,14 +342,17 @@ func (s *Service) AddSupplies(ctx context.Context, soID string, items []adapters
 	return nil
 }
 
-// RemoveSupply releases the reservation of the supply in the Catalog and unlinks it from an
-// IN_DIAGNOSIS order. A failure to release leaves the order unchanged.
+// RemoveSupply unlinks a supply from an IN_DIAGNOSIS order and recalculates the total. The
+// reservation is released in the Catalog only after the unlink is committed: if the commit fails
+// the stock stays reserved for the order. A failed release is logged and the call succeeds, so
+// the stock stays reserved (conservative failure).
 func (s *Service) RemoveSupply(ctx context.Context, soID, supplyID string) error {
 	supplyID = strings.TrimSpace(supplyID)
 	if supplyID == "" {
 		return domain.ErrInvalidSupplyID
 	}
-	return s.uow.Execute(ctx, func(ctx context.Context) error {
+	var reservationID string
+	err := s.uow.Execute(ctx, func(ctx context.Context) error {
 		so, err := s.repo.FindByID(ctx, soID)
 		if err != nil {
 			return err
@@ -370,14 +373,24 @@ func (s *Service) RemoveSupply(ctx context.Context, soID, supplyID string) error
 		if link == nil {
 			return domain.ErrServiceOrderSupplyNotFound
 		}
-		if err := s.catalog.ReleaseReservation(ctx, link.ReservationID); err != nil && !errors.Is(err, catalog.ErrReservationNotFound) {
-			return err
-		}
+		reservationID = link.ReservationID
 		if _, err := s.repo.RemoveSupply(ctx, soID, supplyID); err != nil {
 			return err
 		}
 		return s.recalculate(ctx, soID)
 	})
+	if err != nil {
+		return err
+	}
+
+	if err := s.catalog.ReleaseReservation(ctx, reservationID); err != nil && !errors.Is(err, catalog.ErrReservationNotFound) {
+		logger.Of(ctx).Error(err, zap.String("operation", "remove_supply_from_service_order"),
+			zap.String("entity", "service_order"),
+			zap.String("service_order_id", soID),
+			zap.String("reservation_id", reservationID),
+		)
+	}
+	return nil
 }
 
 // recalculate sets the total from the current works and supplies, in the same transaction.
