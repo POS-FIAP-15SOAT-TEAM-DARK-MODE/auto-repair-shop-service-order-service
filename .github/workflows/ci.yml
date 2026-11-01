@@ -83,6 +83,35 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: build
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: service_order_app
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: service_order
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      ministack:
+        image: ministackorg/ministack
+        ports:
+          - 4566:4566
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: service_order_app
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_DB: service_order
+      POSTGRES_SSLMODE: disable
+      AWS_ENDPOINT_URL: http://localhost:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -93,10 +122,53 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Apply migrations
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
+          migrate -path migrations -database "postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB?sslmode=disable" up
+
+      - name: Create MiniStack messaging resources
+        run: sh local/init-aws.sh
+
       - name: Run integration tests
-        env:
-          BCRYPT_COST: "4"
         run: go test -tags=integration ./internal/integration/... -v
+
+  coverage:
+    name: Coverage gate
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run tests with coverage
+        env:
+          LOG_LEVEL: PANIC
+        run: go test ./... -coverprofile=coverage.out
+
+      - name: Exclude generated mocks from coverage
+        run: grep -v '/mocks/' coverage.out > coverage.filtered.out
+
+      - name: Enforce total coverage >= 80%
+        run: |
+          COV=$(go tool cover -func=coverage.filtered.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo "Total coverage (sem mocks): ${COV}%" | tee -a "$GITHUB_STEP_SUMMARY"
+          awk -v c="$COV" 'BEGIN{exit !(c>=80)}'
+
+      - name: Enforce saga and domain coverage >= 90%
+        env:
+          LOG_LEVEL: PANIC
+        run: |
+          go test ./internal/saga/... ./internal/service_order/domain/... -cover | tee critical-coverage.txt
+          awk '
+            /coverage:/ { pct=$5; gsub("%","",pct); print $2, pct"%" >> ENVIRON["GITHUB_STEP_SUMMARY"]; if (pct+0 < 90) bad=1 }
+            END { exit bad }' critical-coverage.txt
 
   sonarqube:
     name: SonarQube Cloud
