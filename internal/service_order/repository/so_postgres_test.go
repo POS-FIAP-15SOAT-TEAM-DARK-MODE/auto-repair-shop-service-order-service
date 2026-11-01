@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/uow"
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/service_order/domain"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -112,6 +113,25 @@ func TestSOPostgresFindByIDAndStatus(t *testing.T) {
 	_, err = repo.FindStatus(ctx, "down")
 	assert.Error(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSOPostgresFindStatusUsesTransactionFromContext(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	repo := NewSOPostgres(db)
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery("SELECT status FROM service_order WHERE id").WithArgs("so-1").
+		WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow("IN_DIAGNOSIS"))
+
+	st, err := repo.FindStatus(uow.WithTx(ctx, tx), "so-1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.SERVICE_ORDER_STATUS_IN_DIAGNOSIS, st)
+	require.NoError(t, mock.ExpectationsWereMet(), "the lookup must run on the transaction, not on the pool")
 }
 
 func TestSOPostgresCountAndSearchBuildFilters(t *testing.T) {

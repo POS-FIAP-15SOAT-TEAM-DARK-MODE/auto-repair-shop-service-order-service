@@ -66,7 +66,7 @@ func (r *soPostgres) FindByID(ctx context.Context, id string) (domain.ServiceOrd
 
 func (r *soPostgres) FindStatus(ctx context.Context, id string) (domain.SERVICE_ORDER_STATUS, error) {
 	var status string
-	if err := r.db.QueryRowContext(ctx, serviceOrderStatusQuery, id).Scan(&status); err != nil {
+	if err := r.conn(ctx).QueryRowContext(ctx, serviceOrderStatusQuery, id).Scan(&status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", domain.ErrServiceOrderNotFound
 		}
