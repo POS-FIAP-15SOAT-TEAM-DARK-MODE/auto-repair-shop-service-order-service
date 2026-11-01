@@ -1,4 +1,4 @@
-# ADR 0003 — Git branching strategy: feature → develop → main
+# ADR 0001 — Git branching strategy: feature → develop → main
 
 - Status: Accepted
 - Date: 2026-08-22
