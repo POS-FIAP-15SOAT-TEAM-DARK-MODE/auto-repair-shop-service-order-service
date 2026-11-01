@@ -75,7 +75,16 @@ func Request(ctx context.Context, incomingID string) (context.Context, string) {
 	l := initLogger().With(
 		zap.String("request_id", reqId),
 	)
+	ctx = context.WithValue(ctx, requestIDKey{}, reqId)
 	return withContext(ctx, &customLogger{l}), reqId
+}
+
+type requestIDKey struct{}
+
+// RequestID returns the request id attached by Request, or "" when there is none.
+func RequestID(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey{}).(string)
+	return id
 }
 
 func Of(ctx context.Context) *customLogger {
