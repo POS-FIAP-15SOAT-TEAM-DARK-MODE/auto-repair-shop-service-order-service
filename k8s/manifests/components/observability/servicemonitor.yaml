@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: service-order-service
+  labels:
+    app: service-order-service
+spec:
+  selector:
+    matchLabels:
+      app: service-order-service
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s

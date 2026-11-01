@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: service-order-service
+---
+# Grants only what the wait-for-migrations initContainer needs: read the
+# db-migrate Job status. Nothing else in the app talks to the Kubernetes API.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: service-order-service-wait-migrations
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: service-order-service-wait-migrations
+subjects:
+  - kind: ServiceAccount
+    name: service-order-service
+roleRef:
+  kind: Role
+  name: service-order-service-wait-migrations
+  apiGroup: rbac.authorization.k8s.io

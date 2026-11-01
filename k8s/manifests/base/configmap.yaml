@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-order-service-config
+  labels:
+    app: service-order-service
+# Non-sensitive runtime config. Secret values (POSTGRES_USER/PASSWORD/DB,
+# JWT_SECRET, INTERNAL_TOKEN) live in the service-order-service-secrets Secret.
+# POSTGRES_HOST, SO_SAGA_REPLIES_QUEUE_URL, SAGA_COMMANDS_TOPIC_ARN and
+# SO_EVENTS_TOPIC_ARN are filled in per environment by the deploy workflow
+# (RDS endpoint and SNS/SQS resources derived by convention).
+data:
+  POSTGRES_PORT: "5432"
+  POSTGRES_SSLMODE: "require"
+  AWS_REGION: "us-east-1"
+  LOG_LEVEL: "INFO"
+  PORT: "8086"
+  CUSTOMER_URL: "http://customer-service:8081"
+  CATALOG_URL: "http://catalog-service:8082"
+  SAGA_STEP_TIMEOUT: "2m"
+  SAGA_PAYMENT_TIMEOUT: "24h"
+  SO_SAGA_REPLIES_QUEUE_URL: ""
+  SAGA_COMMANDS_TOPIC_ARN: ""
+  SO_EVENTS_TOPIC_ARN: ""

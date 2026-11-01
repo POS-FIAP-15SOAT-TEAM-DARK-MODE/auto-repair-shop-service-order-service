@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-order-service
+  labels:
+    app: service-order-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-order-service
+  template:
+    metadata:
+      labels:
+        app: service-order-service
+    spec:
+      serviceAccountName: service-order-service
+      # The db-migrate Job and this Deployment are applied by the same
+      # `kubectl apply -k`, with no ordering guarantee between them. Without
+      # this wait, the app can start before the schema exists.
+      initContainers:
+        - name: wait-for-migrations
+          image: alpine/k8s:1.31.2
+          command:
+            - sh
+            - -c
+            - |
+              until kubectl get job/service-order-service-db-migrate -n "$POD_NAMESPACE" >/dev/null 2>&1; do
+                echo 'waiting for the service-order-service-db-migrate Job to be created...'
+                sleep 2
+              done
+              kubectl wait --for=condition=complete --timeout=300s -n "$POD_NAMESPACE" job/service-order-service-db-migrate
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+      containers:
+        - name: app
+          # Overridden per overlay via the kustomize `images:` transformer.
+          image: auto-repair-shop-service-order-service:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8086
+          envFrom:
+            - configMapRef:
+                name: service-order-service-config
+            - secretRef:
+                name: service-order-service-secrets
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          # Requests are required for the HPA CPU/memory targets to work.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi

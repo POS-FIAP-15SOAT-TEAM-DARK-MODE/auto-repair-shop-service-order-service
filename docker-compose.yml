@@ -1,0 +1,102 @@
+name: auto-repair-shop-service-order
+
+services:
+  app:
+    build: .
+    env_file:
+      # Optional: `make up` seeds it from .env.example on first run.
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: db
+      AWS_ENDPOINT_URL: http://ministack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      CUSTOMER_URL: http://customer-service:8081
+      CATALOG_URL: http://catalog-service:8082
+    ports:
+      - "8086:8086"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      aws-init:
+        condition: service_completed_successfully
+    networks: [backend]
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-service_order_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-service_order}
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-service_order_app} -d ${POSTGRES_DB:-service_order}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  migrate:
+    image: migrate/migrate:v4.17.1
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://${POSTGRES_USER:-service_order_app}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-service_order}?sslmode=disable
+      - up
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  ministack:
+    image: ministackorg/ministack
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4566/_ministack/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  aws-init:
+    image: amazon/aws-cli
+    entrypoint: ["/bin/sh", "/init/init-aws.sh"]
+    volumes:
+      - ./local:/init:ro
+    environment:
+      AWS_ENDPOINT_URL: http://ministack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+    depends_on:
+      ministack:
+        condition: service_healthy
+    networks: [backend]
+
+  # REST stubs of the Customer and Catalog services (WireMock). They take the
+  # hostnames and ports of the real services, so the app's *_URL defaults work
+  # unchanged. Start them with COMPOSE_PROFILES=stubs (the Makefile does).
+  customer-service:
+    image: wiremock/wiremock:3.9.1
+    command: ["--port", "8081", "--local-response-templating"]
+    volumes:
+      - ./local/stubs/customer/mappings:/home/wiremock/mappings:ro
+    profiles: ["stubs"]
+    networks: [backend]
+
+  catalog-service:
+    image: wiremock/wiremock:3.9.1
+    command: ["--port", "8082", "--local-response-templating"]
+    volumes:
+      - ./local/stubs/catalog/mappings:/home/wiremock/mappings:ro
+    profiles: ["stubs"]
+    networks: [backend]
+
+networks:
+  backend:

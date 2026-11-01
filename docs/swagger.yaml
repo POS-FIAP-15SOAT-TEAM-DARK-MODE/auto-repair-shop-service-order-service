@@ -1,0 +1,859 @@
+openapi: 3.0.0
+info:
+  title: Auto-Repair-Shop Service Order API
+  version: "1.0.0"
+  description: >-
+    Public API of the service-order-service (Service Order aggregate and saga orchestrator).
+    Requests reach this service through the gateway. Internal routes (/internal/*) are not
+    documented here and are never routed by the gateway.
+servers:
+  - url: http://localhost:8086
+    description: Local development server
+security:
+  - SessionToken: []
+tags:
+  - name: Health
+  - name: ServiceOrder
+    description: Service order lifecycle, items and saga-driven approval
+paths:
+  /ping:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      security: []
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: pong
+
+  /v1/service-order:
+    post:
+      summary: Create a service order
+      description: >-
+        Creates a service order in status NEW for a customer and vehicle. Works are resolved in the
+        Catalog (active only) and supplies are reserved in the Catalog. Reservations already made are
+        released if the order cannot be stored.
+      tags:
+        - ServiceOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceOrderRequest"
+      responses:
+        "201":
+          description: Service order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SOResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+    get:
+      summary: List service orders
+      description: Paginated list with optional filters by status, customer and vehicle.
+      tags:
+        - ServiceOrder
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - in: query
+          name: status
+          required: false
+          schema:
+            $ref: "#/components/schemas/ServiceOrderStatus"
+        - in: query
+          name: customerId
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: vehicleId
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: sort_by
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: sort_order
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        "200":
+          description: Page of service orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSOResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/service-order/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    get:
+      summary: Get a service order
+      description: Returns the order with the customer and vehicle snapshots, works and supplies.
+      tags:
+        - ServiceOrder
+      responses:
+        "200":
+          description: Service order detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SODetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/service-order/{id}/status:
+    get:
+      summary: Get the status of a service order
+      description: Public endpoint (no JWT). Reads only the local database.
+      tags:
+        - ServiceOrder
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ServiceOrderId"
+      responses:
+        "200":
+          description: Current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SOResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/service-order/{id}/works:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    get:
+      summary: List the works of a service order
+      tags:
+        - ServiceOrder
+      responses:
+        "200":
+          description: Works of the order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItemList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      summary: Add works to a service order
+      description: Only in status NEW. Works must exist and be active in the Catalog.
+      tags:
+        - ServiceOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddWorksRequest"
+      responses:
+        "204":
+          description: Works added
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /v1/service-order/{id}/works/{serviceId}:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+      - in: path
+        name: serviceId
+        required: true
+        description: Work identifier
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: Remove a work from a service order
+      description: Only in status NEW.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Work removed
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/service-order/{id}/supplies:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    get:
+      summary: List the supplies of a service order
+      tags:
+        - ServiceOrder
+      responses:
+        "200":
+          description: Supplies of the order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplyItemList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      summary: Add supplies to a service order
+      description: >-
+        Only in status IN_DIAGNOSIS. Each supply is reserved in the Catalog; a supply without
+        stock is rejected.
+      tags:
+        - ServiceOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddSuppliesRequest"
+      responses:
+        "204":
+          description: Supplies added and reserved
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /v1/service-order/{id}/supplies/{supplyId}:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+      - in: path
+        name: supplyId
+        required: true
+        description: Supply identifier
+        schema:
+          type: string
+          format: uuid
+    delete:
+      summary: Remove a supply from a service order
+      description: Only in status IN_DIAGNOSIS. Releases the reservation in the Catalog.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Supply removed and reservation released
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /v1/service-order/{id}/received:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Mark the vehicle as received
+      description: NEW to RECEIVED.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Status changed to RECEIVED
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/service-order/{id}/start-diagnosis:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Start the diagnosis
+      description: RECEIVED to IN_DIAGNOSIS.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Status changed to IN_DIAGNOSIS
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/service-order/{id}/send:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Send the budget to the customer
+      description: >-
+        Requires status IN_DIAGNOSIS and at least one work. Starts the saga (step BUDGET) that asks
+        Billing for the budget. The status stays IN_DIAGNOSIS until Billing answers. Returns 409 when
+        the order is not in IN_DIAGNOSIS or when a saga is already running for it.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Budget requested; saga started
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            Conflict. The order is not in IN_DIAGNOSIS, or a saga is already running for it
+            (saga_already_running).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/service-order/{id}/accept:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Accept the budget
+      description: >-
+        Customer approval. The caller must be the customer of the order. The status moves to
+        IN_PROGRESS immediately and the saga requests the payment. Returns 409 when the order is not
+        AWAITING_APPROVAL or the saga is not waiting for the customer.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Budget accepted; status IN_PROGRESS; payment requested
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            Conflict. The order is not AWAITING_APPROVAL, or the saga is not waiting for the customer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/service-order/{id}/reject:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Reject the budget
+      description: >-
+        Customer rejection. Same guards as accept. The order moves to REJECTED (reason
+        BUDGET_REJECTED) and the saga compensates (CancelBudget, ReleaseStock). Returns 409 when the
+        order is not AWAITING_APPROVAL or the saga is not waiting for the customer.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Budget rejected; order REJECTED
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: >-
+            Conflict. The order is not AWAITING_APPROVAL, or the saga is not waiting for the customer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/service-order/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Cancel a service order
+      description: >-
+        Allowed while the order is cancelable. With a running saga, the compensations are sent
+        according to the steps already done (CancelExecution, RefundPayment, CancelBudget) and the
+        stock is released. The order moves to CANCELLED (reason USER_CANCELLED).
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Service order cancelled
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/service-order/{id}/deliver:
+    parameters:
+      - $ref: "#/components/parameters/ServiceOrderId"
+    put:
+      summary: Deliver the vehicle
+      description: COMPLETED to DELIVERED.
+      tags:
+        - ServiceOrder
+      responses:
+        "204":
+          description: Status changed to DELIVERED
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+components:
+  securitySchemes:
+    SessionToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ServiceOrderId:
+      in: path
+      name: id
+      required: true
+      description: Service order identifier (ULID)
+      schema:
+        type: string
+    Page:
+      in: query
+      name: page
+      required: false
+      schema:
+        type: integer
+        format: int64
+        default: 1
+        minimum: 1
+      description: Page number (1-based).
+    PageSize:
+      in: query
+      name: pageSize
+      required: false
+      schema:
+        type: integer
+        format: int64
+        default: 10
+        minimum: 1
+      description: Items per page.
+  responses:
+    BadRequest:
+      description: Invalid request (malformed body, invalid identifier or empty service list)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient role, or the caller is not the customer of the order
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Service order, customer, vehicle, work or supply not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Status transition not allowed in the current state, or a saga is already running
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: Business rule violation (for example, insufficient stock)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadGateway:
+      description: Customer or Catalog unavailable, or the upstream answered with an unexpected error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP status code
+          example: 409
+        errors:
+          type: array
+          items:
+            type: string
+          description: Error messages
+          example: ["service order is not in NEW status"]
+        error:
+          type: string
+          description: Error message, for statuses that carry a single message
+
+    ServiceOrderStatus:
+      type: string
+      enum:
+        - NEW
+        - RECEIVED
+        - IN_DIAGNOSIS
+        - AWAITING_APPROVAL
+        - IN_PROGRESS
+        - COMPLETED
+        - DELIVERED
+        - REJECTED
+        - CANCELLED
+
+    CreateServiceOrderRequest:
+      type: object
+      required:
+        - client
+        - vehicle
+      properties:
+        client:
+          type: string
+          format: uuid
+          description: Customer identifier
+        vehicle:
+          type: string
+          format: uuid
+          description: Vehicle identifier (must belong to the customer)
+        works:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Work identifiers (active works only)
+        supplies:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddSupplyItem"
+
+    AddWorksRequest:
+      type: object
+      required:
+        - services
+      properties:
+        services:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          description: Work identifiers to add
+
+    AddSupplyItem:
+      type: object
+      required:
+        - id
+        - amount
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Supply identifier
+        amount:
+          type: integer
+          minimum: 1
+          description: Quantity to reserve
+
+    AddSuppliesRequest:
+      type: object
+      required:
+        - supplies
+      properties:
+        supplies:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AddSupplyItem"
+
+    SOResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Service order identifier (ULID)
+        status:
+          $ref: "#/components/schemas/ServiceOrderStatus"
+
+    CustomerResponse:
+      type: object
+      description: Snapshot of the customer taken when the order was created
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        type:
+          type: string
+          enum: [INDIVIDUAL, COMPANY]
+        document:
+          type: string
+          description: CPF or CNPJ, digits only
+        companyName:
+          type: string
+          nullable: true
+        phone:
+          type: string
+
+    VehicleResponse:
+      type: object
+      description: Snapshot of the vehicle taken when the order was created
+      properties:
+        id:
+          type: string
+          format: uuid
+        licensePlate:
+          type: string
+          example: ABC1D23
+        brandModel:
+          type: string
+          example: Fiat - Uno
+        year:
+          type: integer
+          example: 2018
+
+    WorkItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: string
+          description: Unit price as a decimal string
+          example: "150.00"
+        status:
+          type: string
+          enum: [ACTIVE]
+
+    WorkItemList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkItemResponse"
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+        pageSize:
+          type: integer
+        page:
+          type: integer
+
+    SupplyItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: string
+          description: Unit price as a decimal string
+          example: "35.50"
+        version:
+          type: integer
+          description: Supply version at the time of the reservation
+        amount:
+          type: integer
+          description: Quantity reserved
+
+    SupplyItemList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupplyItemResponse"
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+        pageSize:
+          type: integer
+        page:
+          type: integer
+
+    SODetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/ServiceOrderStatus"
+        totalValue:
+          type: number
+          format: double
+          description: Sum of the work prices plus supply price times quantity
+          example: 221.0
+        customer:
+          $ref: "#/components/schemas/CustomerResponse"
+        vehicle:
+          $ref: "#/components/schemas/VehicleResponse"
+        works:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkItemResponse"
+        supplies:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupplyItemResponse"
+
+    SOListItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/ServiceOrderStatus"
+        totalValue:
+          type: number
+          format: double
+        customer:
+          $ref: "#/components/schemas/CustomerResponse"
+        vehicle:
+          $ref: "#/components/schemas/VehicleResponse"
+
+    PaginatedSOResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SOListItemResponse"
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+          format: int64
+        pageSize:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int64
