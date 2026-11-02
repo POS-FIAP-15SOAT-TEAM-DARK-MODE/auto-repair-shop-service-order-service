@@ -34,6 +34,21 @@ paths:
                     type: string
                     example: pong
 
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: Operational endpoint scraped by Prometheus (ServiceMonitor, port http). No JWT.
+      tags:
+        - Health
+      security: []
+      responses:
+        "200":
+          description: Metrics in the Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+
   /v1/service-order:
     post:
       summary: Create a service order
@@ -207,6 +222,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "502":
           $ref: "#/components/responses/BadGateway"
 
@@ -309,7 +326,7 @@ paths:
         - ServiceOrder
       responses:
         "204":
-          description: Supply removed and reservation released
+          description: Supply removed; the reservation release is attempted after the unlink commits (a failed release is logged, not returned)
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -320,8 +337,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
-        "502":
-          $ref: "#/components/responses/BadGateway"
 
   /v1/service-order/{id}/received:
     parameters:
@@ -392,7 +407,7 @@ paths:
         "409":
           description: >-
             Conflict. The order is not in IN_DIAGNOSIS, or a saga is already running for it
-            (saga_already_running).
+            (message: "service order already has a running approval saga").
           content:
             application/json:
               schema:
@@ -545,7 +560,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ValidationErrorResponse"
     Unauthorized:
       description: Missing or invalid JWT
       content:
@@ -584,21 +599,35 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
   schemas:
     ErrorResponse:
+      description: Every status except 400 (single message; infrastructure errors carry a fixed generic message)
       type: object
+      required:
+        - code
+        - error
       properties:
         code:
           type: integer
           description: HTTP status code
           example: 409
+        error:
+          type: string
+          example: service order isn't at IN_DIAGNOSIS state
+
+    ValidationErrorResponse:
+      description: 400 only. One message per validation rule that failed
+      type: object
+      required:
+        - code
+        - errors
+      properties:
+        code:
+          type: integer
+          example: 400
         errors:
           type: array
           items:
             type: string
-          description: Error messages
-          example: ["service order is not in NEW status"]
-        error:
-          type: string
-          description: Error message, for statuses that carry a single message
+          example: ["invalid work id"]
 
     ServiceOrderStatus:
       type: string
