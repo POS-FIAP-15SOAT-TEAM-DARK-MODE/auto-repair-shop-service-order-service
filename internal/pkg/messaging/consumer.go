@@ -44,7 +44,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				break
 			}
-			logger.Global().Error(err, zap.String("component", "sqs-consumer"))
+			logger.Of(ctx).Error(err, zap.String("component", "sqs-consumer"))
 			select {
 			case <-ctx.Done():
 			case <-time.After(time.Second):
@@ -53,7 +53,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 		for _, m := range msgs {
 			if err := c.Handle(ctx, m); err != nil {
-				logger.Global().Error(err, zap.String("component", "sqs-consumer"))
+				logger.Of(ctx).Error(err, zap.String("component", "sqs-consumer"))
 			}
 		}
 	}
@@ -67,9 +67,10 @@ func (c *Consumer) Handle(ctx context.Context, m Message) error {
 		return fmt.Errorf("decode message: %w", err)
 	}
 
+	ctx = logger.WithFields(ctx, env.LogFields()...)
 	h, ok := c.handlers[env.Type]
 	if !ok {
-		logger.Global().Warn("unknown message type, discarding", zap.String("type", env.Type), zap.String("message_id", env.MessageID))
+		logger.Of(ctx).Warn("message.discarded", zap.String("type", env.Type), zap.String("reason", "unknown_type"))
 		return c.delete(ctx, m)
 	}
 
@@ -86,7 +87,7 @@ func (c *Consumer) Handle(ctx context.Context, m Message) error {
 	if n, err := res.RowsAffected(); err != nil {
 		return err
 	} else if n == 0 {
-		logger.Global().Info("duplicate message ignored", zap.String("message_id", env.MessageID), zap.String("type", env.Type))
+		logger.Of(ctx).Info("message.duplicate_ignored", zap.String("type", env.Type))
 		return c.delete(ctx, m)
 	}
 
@@ -99,6 +100,7 @@ func (c *Consumer) Handle(ctx context.Context, m Message) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	logger.Of(ctx).Info("message.handled", zap.String("type", env.Type))
 	uow.RunAfterCommit(txCtx)
 	return c.delete(ctx, m)
 }
