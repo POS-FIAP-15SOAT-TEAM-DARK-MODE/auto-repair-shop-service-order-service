@@ -14,7 +14,7 @@ func init() {
 		domain.ErrSupplyNotFound, domain.ErrServiceOrderNotFound,
 		domain.ErrServiceOrderWorkNotFound, domain.ErrServiceOrderSupplyNotFound)
 	web.RegisterErrorStatus(http.StatusForbidden, domain.ErrInvalidCustomerProperty)
-	web.RegisterErrorStatus(http.StatusBadRequest,
+	web.RegisterValidationErrors(
 		domain.ErrInvalidServiceOrderId, domain.ErrInvalidWorkId, domain.ErrInvalidSupplyID,
 		domain.ErrInvalidSupplyAmount, domain.ErrEmptyServicesList)
 	web.RegisterErrorStatus(http.StatusConflict,

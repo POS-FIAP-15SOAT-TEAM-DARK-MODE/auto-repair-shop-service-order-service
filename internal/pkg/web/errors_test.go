@@ -41,7 +41,8 @@ func TestErrorMapsDomainAndGenericErrorsToStatus(t *testing.T) {
 		{"conflict", app.ErrDataConflict, http.StatusConflict},
 		{"infra conflict", app.ErrInfraConflict, http.StatusConflict},
 		{"data violation", app.ErrDataViolation, http.StatusUnprocessableEntity},
-		{"joined errors are a bad request", errors.Join(jsonv2.ErrJSONType, errors.New("field")), http.StatusBadRequest},
+		{"joined validation errors are a bad request", errors.Join(jsonv2.ErrJSONType, errors.New("field")), http.StatusBadRequest},
+		{"joined with an unknown cause is a server error", errors.Join(errors.New("field"), errors.New("boom")), http.StatusInternalServerError},
 		{"unknown error", errors.New("boom"), http.StatusInternalServerError},
 	}
 	for _, c := range cases {
@@ -96,7 +97,7 @@ func TestUpstreamUnavailableAnswersFixedMessage(t *testing.T) {
 	assert.NotContains(t, body.Error, "uq_users_cpf")
 }
 
-var errUpstream = errors.New("upstream service unavailable")
+var errUpstream = errors.New("upstream unavailable")
 
 // Domain errors keep their own message, and the cause wrapped around the sentinel is not exposed.
 func TestDomainErrorsKeepTheirMessage(t *testing.T) {
@@ -119,12 +120,38 @@ func TestDomainErrorsKeepTheirMessage(t *testing.T) {
 	}
 }
 
-func TestBadRequestListsTheValidationMessages(t *testing.T) {
-	bad := errors.Join(errors.New("field a"), errors.New("field b"))
-	status, body := Error(bad)
+var (
+	errFieldName = errors.New("field name is required")
+	errFieldSize = errors.New("field size is invalid")
+)
+
+func TestBadRequestListsOnlyTheMatchedValidationMessages(t *testing.T) {
+	RegisterValidationErrors(errFieldName, errFieldSize)
+
+	status, body := Error(errors.Join(errFieldName, errFieldSize))
 	assert.Equal(t, http.StatusBadRequest, status)
-	assert.Equal(t, []string{"field a", "field b"}, body.Errors)
+	assert.Equal(t, []string{errFieldName.Error(), errFieldSize.Error()}, body.Errors)
 	assert.Empty(t, body.Error)
+
+	status, body = Error(fmt.Errorf("body: %w", errFieldName))
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Equal(t, []string{errFieldName.Error()}, body.Errors, "the wrapping context is not sent")
+}
+
+// A joined validation error never carries the driver text of the cause it is joined with.
+func TestJoinedDriverErrorIsNotValidation(t *testing.T) {
+	RegisterValidationErrors(errFieldName)
+	driver := errors.New(sensitive)
+
+	status, body := Error(errors.Join(driver, errors.New("boom")))
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.Equal(t, messageInternalError, body.Error)
+	assert.Nil(t, body.Errors)
+
+	status, body = Error(errors.Join(errFieldName, driver))
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Equal(t, []string{errFieldName.Error()}, body.Errors)
+	assert.NotContains(t, fmt.Sprint(body), "uq_users_cpf")
 }
 
 func TestUnauthorizedAndForbiddenUseSingleMessage(t *testing.T) {
@@ -154,14 +181,6 @@ func TestDescribeFlagsServerSideErrors(t *testing.T) {
 			assert.Equal(t, c.log, logIt)
 		})
 	}
-}
-
-func TestUnwrapAllAndIsJoined(t *testing.T) {
-	assert.Nil(t, unwrapAll(nil))
-	assert.Equal(t, []string{"a"}, unwrapAll(errors.New("a")))
-	assert.Equal(t, []string{"x", "y"}, unwrapAll(errors.Join(errors.New("x"), errors.New("y"))))
-	assert.True(t, IsJoined(errors.Join(errors.New("x"))))
-	assert.False(t, IsJoined(errors.New("plain")))
 }
 
 func TestRegisterErrorStatusKeepsRegistrationOrder(t *testing.T) {
