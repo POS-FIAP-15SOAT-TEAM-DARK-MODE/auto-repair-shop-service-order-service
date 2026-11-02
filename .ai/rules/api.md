@@ -53,11 +53,14 @@ GET    /internal/service-orders/exists?customer_id= | ?vehicle_id=     X-Interna
 | 403 | Role not allowed, or a customer acting on another customer's order |
 | 404 | Order, customer, vehicle, work, supply or reservation not found |
 | 409 | Status transition not allowed, or a saga is already running or not waiting |
-| 422 | Business rule violation (for example, out of stock, or the internal check without exactly one parameter) |
+| 422 | Business rule violation (for example, out of stock, a Catalog validation answer, or the internal check without exactly one parameter) |
 | 502 | Customer or Catalog unavailable, or an unexpected upstream answer |
 | 500 | Unexpected error |
 
 ## Swagger
 Every operation has summary, description, request and response schemas, and the error statuses it can
-return. Protected operations document 401 and 403. 409 is documented on `send`, `accept` and `reject`.
+return. Protected operations document 401 and 403; a status guard (409) or a Catalog call (422, 502) is
+documented where the handler can return it. `ErrorResponse` (`code`, `error`) and
+`ValidationErrorResponse` (`code`, `errors`, 400 only) are the two error schemas.
+`/metrics` and `/ping` are documented; the Swagger UI routes and `/internal/*` are not.
 Update `docs/swagger.yaml` in the same commit as any route change.

@@ -34,7 +34,7 @@ Types: `feat fix refactor test chore docs perf style revert ci` — scopes in `.
 | Task type | Files to read |
 |---|---|
 | New feature or domain change | `.ai/rules/architecture.md` · `.ai/rules/domain.md` · `.ai/rules/go-conventions.md` |
-| Saga or messaging change | `.ai/rules/domain.md` · `.ai/rules/architecture.md` · `.ai/rules/database.md` |
+| Saga or messaging change | `.ai/rules/domain.md` · `.ai/rules/architecture.md` · `.ai/rules/database.md` · `.ai/rules/testing.md` |
 | Database schema or migration | `.ai/rules/database.md` · `.ai/rules/go-conventions.md` |
 | API endpoint | `.ai/rules/api.md` · `.ai/rules/architecture.md` · `.ai/rules/security.md` |
 | Auth, RBAC, or security | `.ai/rules/security.md` · `.ai/rules/domain.md` |

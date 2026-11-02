@@ -6,7 +6,7 @@ Most changes touch the existing aggregate; check `rules/domain.md` before adding
 ## 1. Domain — `internal/service_order/domain/`
 - Struct with the id type (ULID for orders, UUID for other entities), `CreatedAt`/`UpdatedAt` if persisted.
 - Sentinel errors as `var ErrXxx = errors.New(...)`; add a status to `http_errors.go` when it has one.
-- Repository interface next to the service that uses it. Add `//go:generate` for mockery when a mock is needed.
+- Repository interface next to the service that uses it.
 - No imports from gin, lib/pq, net/http or adapter packages.
 
 ## 2. Repositories — `internal/service_order/repository/`
@@ -27,8 +27,8 @@ Follow `add-migration.md`. Add foreign keys to the parent table and indexes for 
 
 ## 6. Tests
 - Unit: service with the in-memory repository and `uow.NewInMemoryUoW()`.
-- Integration (`-tags=integration`): Postgres repository, rolled back after each test.
+- Integration (`-tags=integration`): real Postgres and MiniStack, each test with its own ids.
 - Coverage: 80% total; 90% when the code is in `internal/saga` or `internal/service_order/domain`.
 
-## 7. Mocks
-`make mockgen`. Never edit generated files.
+## 7. Test Doubles
+Use the in-memory repository and `uow.NewInMemoryUoW()` (see `rules/go-conventions.md`). No mocks are generated.

@@ -18,14 +18,14 @@ and `go test --race`; the integration tests run in CI.
 ## Unit Tests
 - Repositories: `repository.NewInMemory()` (`repository/so_in_memory.go`), `saga.NewMemoryRepository()` and `saga.NewMemoryOutbox()` (`saga/memory.go`) implement the same interfaces as the Postgres versions.
 - UoW: `uow.NewInMemoryUoW()` for service tests (`internal/pkg/uow/in_memory.go`).
-- Mocks: mockery, generated into `mocks/` folders; used at interface boundaries only.
+- No generated mocks: use the in-memory implementations above, or a real dependency in the integration suite.
 - Clients (`internal/clients`): `httptest` servers; cover 404, 409, 422, 5xx, timeout and header propagation.
 
 ## Integration Tests (`-tags=integration`)
 - Real Postgres (`service_order` database) and MiniStack (queues from `local/init-aws.sh`).
 - The test plays Billing and Execution: it reads commands from `test-{billing,execution,catalog}-commands` and publishes replies on `billing-events` and `execution-events`.
 - Customer and Catalog are simulated with `httptest`.
-- Each test cleans its rows; tests do not depend on each other.
+- One app instance per package (`TestMain`); each test creates its own ids, so tests do not share rows.
 - Required scenarios: happy path (`send → BudgetGenerated → accept → PaymentApproved → ExecutionQueued → ExecutionCompleted`, with `IN_PROGRESS` right after `accept`); `PaymentFailed` → `REJECTED`; `ExecutionFailed` → `CANCELLED`; `reject` → `REJECTED`; duplicate message → one effect; every status change publishes `ServiceOrderStatusChanged`.
 
 ## Structure Rules

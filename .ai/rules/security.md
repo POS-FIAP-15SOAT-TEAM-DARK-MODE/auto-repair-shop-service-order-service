@@ -20,7 +20,7 @@
 ## Personal Data
 - The order stores copies of CPF or CNPJ (`customer_document`), name, e-mail and phone for its own flow.
   They are never written to logs, error messages or responses other than the detail endpoint that already returns them.
-- Log only ids. Field keys `document`, `cpf`, `cnpj`, `token`, `password` and `authorization` are redacted by `internal/pkg/logger`.
+- Log only ids. Field keys `password`, `senha`, `pwd`, `token`, `authorization`, `cpf`, `cnpj`, `document` and `documento` are redacted by `internal/pkg/logger`; DSN passwords in strings are masked.
 - Notifications log a masked recipient (`service_order.status_notification_sent`).
 - Use explicit fields (`zap.String("service_order_id", id)`); do not pass whole snapshots or request bodies to the logger.
 
