@@ -9,6 +9,7 @@ import (
 
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/logger"
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/messaging"
+	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/metrics"
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/uow"
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/service_order/domain"
 	"github.com/google/uuid"
@@ -81,9 +82,17 @@ func (o *Orchestrator) Send(ctx context.Context, soID, requestID string) error {
 		if err := o.sagas.Insert(ctx, inst); err != nil {
 			return err
 		}
-
-		return sendCommand(ctx, o.outbox, inst.ID, soID, requestID,
-			specGenerateBudget, buildGenerateBudget(so))
+		ctx = logger.WithFields(ctx, zap.String("saga_id", inst.ID), zap.String("service_order_id", soID))
+		if err := sendCommand(ctx, o.outbox, inst.ID, soID, requestID,
+			specGenerateBudget, buildGenerateBudget(so)); err != nil {
+			return err
+		}
+		started := logger.Of(ctx)
+		uow.OnCommit(ctx, func(context.Context) {
+			metrics.SagaStartedTotal.Inc()
+			started.Info("saga.started")
+		})
+		return nil
 	})
 }
 
@@ -117,6 +126,7 @@ func (o *Orchestrator) decide(ctx context.Context, soID, userID, requestID strin
 		if inst == nil || inst.Step != StepAwaitingCustomer {
 			return domain.ErrSagaNotAwaitingCustomer
 		}
+		ctx = logger.WithFields(ctx, zap.String("saga_id", inst.ID), zap.String("service_order_id", soID))
 
 		meta := Meta{SagaID: inst.ID, RequestID: requestID}
 		if accept {
@@ -167,6 +177,7 @@ func (o *Orchestrator) Cancel(ctx context.Context, soID, requestID string) error
 		var specs []commandSpec
 		if inst != nil {
 			meta.SagaID = inst.ID
+			ctx = logger.WithFields(ctx, zap.String("saga_id", inst.ID), zap.String("service_order_id", soID))
 			specs = cancelCommands(inst, hasSupplies)
 		} else if hasSupplies {
 			specs = []commandSpec{specReleaseStock}
@@ -181,6 +192,7 @@ func (o *Orchestrator) Cancel(ctx context.Context, soID, requestID string) error
 			if err := o.sagas.Update(ctx, inst); err != nil {
 				return err
 			}
+			onCompensated(ctx)
 		}
 		return o.sendAll(ctx, meta.SagaID, soID, requestID, specs)
 	})
@@ -204,6 +216,8 @@ func (o *Orchestrator) ExpireDeadlines(ctx context.Context, limit int) (int, err
 			if inst == nil || inst.Status != StatusRunning || inst.Deadline == nil || !inst.Deadline.Before(o.now()) {
 				return nil
 			}
+			ctx = logger.WithFields(ctx, zap.String("saga_id", inst.ID), zap.String("service_order_id", inst.ServiceOrderID))
+			logger.Of(ctx).Info("saga.deadline_expired", zap.String("step", string(inst.Step)))
 			switch inst.Step {
 			case StepBudget:
 				inst.Status = StatusFailed
@@ -221,8 +235,7 @@ func (o *Orchestrator) ExpireDeadlines(ctx context.Context, limit int) (int, err
 				supplies := len(so.Supplies) > 0
 				meta := Meta{SagaID: inst.ID}
 				if so.Status != domain.SERVICE_ORDER_STATUS_IN_PROGRESS {
-					logger.Of(ctx).Warn("saga.deadline_unexpected_status", zap.String("saga_id", inst.ID),
-						zap.String("service_order_id", so.ID), zap.String("status", so.Status.String()))
+					logger.Of(ctx).Warn("saga.deadline_unexpected_status", zap.String("status", so.Status.String()))
 					inst.Status = StatusFailed
 					inst.Deadline = nil
 					processed++
@@ -251,7 +264,17 @@ func (o *Orchestrator) finishCompensated(ctx context.Context, inst *Instance, re
 	if err := o.sagas.Update(ctx, inst); err != nil {
 		return err
 	}
+	onCompensated(ctx)
 	return o.sendAll(ctx, inst.ID, inst.ServiceOrderID, requestID, specs)
+}
+
+// onCompensated counts the compensated saga and logs it once the transaction commits.
+func onCompensated(ctx context.Context) {
+	log := logger.Of(ctx)
+	uow.OnCommit(ctx, func(context.Context) {
+		metrics.SagaCompensatedTotal.Inc()
+		log.Info("saga.compensated")
+	})
 }
 
 // sendAll sends the compensation commands in order. Compensations carry an empty payload.
@@ -275,7 +298,7 @@ func (o *Orchestrator) RegisterReplies(c *messaging.Consumer) {
 	c.RegisterHandler("ExecutionFailed", o.reply(o.onExecutionFailed))
 	for _, typ := range []string{"BudgetCancelled", "PaymentRefunded", "ExecutionWorkStatusChanged"} {
 		c.RegisterHandler(typ, func(ctx context.Context, _ *sql.Tx, env messaging.Envelope) error {
-			logger.Of(ctx).Info("saga.reply_logged", zap.String("type", env.Type), zap.String("saga_id", env.SagaID))
+			logger.Of(ctx).Info("saga.reply_logged", zap.String("type", env.Type))
 			return nil
 		})
 	}
@@ -285,6 +308,7 @@ type replyFunc func(ctx context.Context, env messaging.Envelope) error
 
 func (o *Orchestrator) reply(fn replyFunc) messaging.Handler {
 	return func(ctx context.Context, _ *sql.Tx, env messaging.Envelope) error {
+		ctx = logger.WithFields(ctx, env.LogFields()...)
 		return o.uow.Execute(ctx, func(ctx context.Context) error {
 			return fn(ctx, env)
 		})
@@ -299,10 +323,28 @@ func (o *Orchestrator) sagaFor(ctx context.Context, env messaging.Envelope, step
 		return nil, false, err
 	}
 	if inst == nil || inst.ServiceOrderID != env.ServiceOrderID || inst.Status != StatusRunning || !slices.Contains(steps, inst.Step) {
-		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type), zap.String("saga_id", env.SagaID))
+		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type))
 		return nil, false, nil
 	}
+	observeStep(inst, o.now())
 	return inst, true, nil
+}
+
+// stepLabels maps the steps that are started by a command to the label of saga_step_duration_seconds.
+var stepLabels = map[Step]string{
+	StepBudget:         "budget",
+	StepPayment:        "payment",
+	StepExecutionQueue: "execution_queue",
+}
+
+// observeStep records the time between the command that started the step (the last update of
+// the instance, in the same transaction) and the reply that closes it.
+func observeStep(inst *Instance, now time.Time) {
+	label, ok := stepLabels[inst.Step]
+	if !ok || inst.UpdatedAt.IsZero() {
+		return
+	}
+	metrics.SagaStepDuration.WithLabelValues(label).Observe(now.Sub(inst.UpdatedAt).Seconds())
 }
 
 func (o *Orchestrator) onBudgetGenerated(ctx context.Context, env messaging.Envelope) error {
@@ -325,7 +367,7 @@ func (o *Orchestrator) onBudgetGenerated(ctx context.Context, env messaging.Enve
 		return err
 	}
 	if so.Status != domain.SERVICE_ORDER_STATUS_IN_DIAGNOSIS {
-		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type), zap.String("saga_id", env.SagaID))
+		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type))
 		return nil
 	}
 
@@ -377,7 +419,7 @@ func (o *Orchestrator) onPaymentFailed(ctx context.Context, env messaging.Envelo
 		return err
 	}
 	if so.Status != domain.SERVICE_ORDER_STATUS_IN_PROGRESS {
-		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type), zap.String("saga_id", env.SagaID))
+		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type))
 		return nil
 	}
 	if err := o.status.Change(ctx, &so, domain.SERVICE_ORDER_STATUS_REJECTED, domain.ReasonPaymentRejected,
@@ -407,7 +449,7 @@ func (o *Orchestrator) onExecutionCompleted(ctx context.Context, env messaging.E
 		return err
 	}
 	if so.Status != domain.SERVICE_ORDER_STATUS_IN_PROGRESS {
-		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type), zap.String("saga_id", env.SagaID))
+		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type))
 		return nil
 	}
 	if err := o.status.Change(ctx, &so, domain.SERVICE_ORDER_STATUS_COMPLETED, "", Meta{SagaID: inst.ID, RequestID: env.RequestID}); err != nil {
@@ -416,7 +458,15 @@ func (o *Orchestrator) onExecutionCompleted(ctx context.Context, env messaging.E
 	inst.Status = StatusCompleted
 	inst.Step = StepDone
 	inst.Deadline = nil
-	return o.sagas.Update(ctx, inst)
+	if err := o.sagas.Update(ctx, inst); err != nil {
+		return err
+	}
+	log := logger.Of(ctx)
+	uow.OnCommit(ctx, func(context.Context) {
+		metrics.SagaCompletedTotal.Inc()
+		log.Info("saga.completed")
+	})
+	return nil
 }
 
 func (o *Orchestrator) onExecutionFailed(ctx context.Context, env messaging.Envelope) error {
@@ -429,7 +479,7 @@ func (o *Orchestrator) onExecutionFailed(ctx context.Context, env messaging.Enve
 		return err
 	}
 	if so.Status != domain.SERVICE_ORDER_STATUS_IN_PROGRESS {
-		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type), zap.String("saga_id", env.SagaID))
+		logger.Of(ctx).Info("saga.reply_ignored", zap.String("type", env.Type))
 		return nil
 	}
 	if err := o.status.Change(ctx, &so, domain.SERVICE_ORDER_STATUS_CANCELLED, domain.ReasonExecutionFailed,
