@@ -24,7 +24,22 @@ func TestRecoveryMiddleware(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-	assert.Contains(t, rec.Body.String(), "internal server error")
+	assert.JSONEq(t, `{"code":500,"error":"internal server error"}`, rec.Body.String())
+}
+
+func TestRecoveryMiddleware_NonErrorPanicHidesValue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(middleware.Recovery())
+	router.GET("/panic", func(c *gin.Context) {
+		panic("db password=hunter2")
+	})
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/panic", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.JSONEq(t, `{"code":500,"error":"internal server error"}`, rec.Body.String())
 }
 
 func TestErrorHandlerMiddleware(t *testing.T) {
@@ -41,7 +56,8 @@ func TestErrorHandlerMiddleware(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), "custom error")
+	assert.JSONEq(t, `{"code":400,"error":"Bad Request"}`, rec.Body.String())
+	assert.NotContains(t, rec.Body.String(), "custom error")
 }
 
 func TestErrorHandlerMiddleware_NoErrors(t *testing.T) {
