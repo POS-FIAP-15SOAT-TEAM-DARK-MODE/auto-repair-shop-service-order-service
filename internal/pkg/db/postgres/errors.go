@@ -29,7 +29,7 @@ const (
 func Error(ctx context.Context, err error) error {
 	var pgErr *pq.Error
 	if !errors.As(err, &pgErr) {
-		logger.Of(ctx).Warn("database error",
+		logger.Of(ctx).Warn("database.error",
 			zap.Error(err),
 		)
 		return err
@@ -43,14 +43,14 @@ func Error(ctx context.Context, err error) error {
 		return app.ErrDataViolation
 
 	case pgSerializationFailure, pgDeadlockDetected:
-		logger.Of(ctx).Warn("PostgreSQL serialization/deadlock issue",
+		logger.Of(ctx).Warn("database.conflict",
 			zap.String("code", string(pgErr.Code)),
 			zap.String("message", pgErr.Message),
 		)
 		return app.ErrInfraConflict
 
 	default:
-		logger.Of(ctx).Warn("Unhandled PostgreSQL error",
+		logger.Of(ctx).Warn("database.unhandled_error",
 			zap.String("code", string(pgErr.Code)),
 			zap.String("message", pgErr.Message),
 		)

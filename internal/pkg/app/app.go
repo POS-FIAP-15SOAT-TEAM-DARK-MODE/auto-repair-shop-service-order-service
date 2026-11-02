@@ -46,13 +46,13 @@ func (m *LifecycleManager) Run(ctx context.Context) error {
 
 	select {
 	case <-quit:
-		logger.Global().Info("received shutdown signal")
+		logger.Global().Info("server.shutdown_signal")
 	case <-ctx.Done():
-		logger.Global().Info("context cancelled")
+		logger.Global().Info("server.context_cancelled")
 	}
 
 	// Shutdown process
-	logger.Global().Info("shutting down all servers...")
+	logger.Global().Info("server.shutting_down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), m.timeout)
 	defer cancel()
 

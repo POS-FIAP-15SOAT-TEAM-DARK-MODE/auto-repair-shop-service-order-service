@@ -63,7 +63,7 @@ func deadlineLoop(svc *service_order.Service) func(ctx context.Context) error {
 			if n, err := svc.ExpireDeadlines(ctx); err != nil && ctx.Err() == nil {
 				logger.Global().Error(err, zap.String("component", "saga-deadlines"))
 			} else if n > 0 {
-				logger.Global().Info("saga deadlines expired", zap.Int("count", n))
+				logger.Global().Info("saga.deadlines_expired", zap.Int("count", n))
 			}
 			select {
 			case <-ctx.Done():
@@ -81,7 +81,7 @@ func messagingWorkers(database *sql.DB, orch *saga.Orchestrator) []app.Server {
 	commandsARN := env.GetString("SAGA_COMMANDS_TOPIC_ARN", "")
 	eventsARN := env.GetString("SO_EVENTS_TOPIC_ARN", "")
 	if queueURL == "" || commandsARN == "" || eventsARN == "" {
-		logger.Global().Warn("messaging disabled: SO_SAGA_REPLIES_QUEUE_URL, SAGA_COMMANDS_TOPIC_ARN or SO_EVENTS_TOPIC_ARN is empty")
+		logger.Global().Warn("messaging.disabled", zap.String("reason", "SO_SAGA_REPLIES_QUEUE_URL, SAGA_COMMANDS_TOPIC_ARN or SO_EVENTS_TOPIC_ARN is empty"))
 		return nil
 	}
 

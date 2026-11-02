@@ -36,7 +36,7 @@ func NewHTTPServer(name string, addr string, handler http.Handler) Server {
 }
 
 func (s *httpServer) Start(_ context.Context) error {
-	logger.Global().Info("starting server", zap.String("name", s.name), zap.String("addr", s.server.Addr))
+	logger.Global().Info("server.started", zap.String("name", s.name), zap.String("addr", s.server.Addr))
 	if err := s.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -44,7 +44,7 @@ func (s *httpServer) Start(_ context.Context) error {
 }
 
 func (s *httpServer) Stop(ctx context.Context) error {
-	logger.Global().Info("stopping server", zap.String("name", s.name))
+	logger.Global().Info("server.stopping", zap.String("name", s.name))
 	return s.server.Shutdown(ctx)
 }
 

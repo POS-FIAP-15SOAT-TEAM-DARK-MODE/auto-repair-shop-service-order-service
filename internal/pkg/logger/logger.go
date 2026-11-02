@@ -14,6 +14,22 @@ import (
 
 type customLogger struct {
 	*zap.Logger
+	// base is the logger without context fields; fields are the context fields that Logger
+	// already carries. They are kept apart so WithFields can replace a key instead of repeating it.
+	base   *zap.Logger
+	fields []zap.Field
+	// ctxKeys are the names of fields. A call-site field with one of these keys is dropped, so each
+	// JSON line carries a key only once.
+	ctxKeys map[string]struct{}
+}
+
+// newCtxLogger returns a logger whose lines carry fields on top of base.
+func newCtxLogger(base *zap.Logger, fields []zap.Field) *customLogger {
+	keys := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		keys[f.Key] = struct{}{}
+	}
+	return &customLogger{Logger: base.With(fields...), base: base, fields: fields, ctxKeys: keys}
 }
 
 type ctxKey struct{}
@@ -28,7 +44,7 @@ func init() {
 }
 
 func initGlobalLogger() {
-	globalLog = &customLogger{initLogger()}
+	globalLog = newCtxLogger(initLogger(), nil)
 	dsnPattern = regexp.MustCompile(`://([^:/\s]+):([^@/\s]+)@`)
 }
 
@@ -44,8 +60,11 @@ func initLogger() *zap.Logger {
 		panic(err)
 	}
 
-	return l
+	return l.With(zap.String("service", env.GetString("SERVICE_NAME", defaultServiceName)))
 }
+
+// defaultServiceName is the value of the "service" field when SERVICE_NAME is not set.
+const defaultServiceName = "service-order-service"
 
 func getLogLevel(level string) zap.AtomicLevel {
 	switch strings.ToUpper(level) {
@@ -62,6 +81,35 @@ func Global() *customLogger {
 	return globalLog
 }
 
+// WithZap returns a context whose loggers write through l. It lets tests capture the lines a
+// component logs; production code keeps the logger created by Request and Global.
+func WithZap(ctx context.Context, l *zap.Logger) context.Context {
+	return withContext(ctx, newCtxLogger(l, nil))
+}
+
+// WithFields returns a context whose logger adds fields to every line logged through Of. A key
+// already set in the context (for example request_id) is replaced by the new value.
+func WithFields(ctx context.Context, fields ...zap.Field) context.Context {
+	cur := Of(ctx)
+	replaced := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		replaced[f.Key] = struct{}{}
+	}
+	merged := make([]zap.Field, 0, len(cur.fields)+len(fields))
+	for _, f := range cur.fields {
+		if _, ok := replaced[f.Key]; !ok {
+			merged = append(merged, f)
+		}
+	}
+	merged = append(merged, fields...)
+
+	base := cur.base
+	if base == nil {
+		base = cur.Logger
+	}
+	return withContext(ctx, newCtxLogger(base, merged))
+}
+
 // Request attaches a per-request logger to ctx, tagging every log line with
 // a request_id. If incomingID is non-empty (e.g. forwarded by an upstream
 // API Gateway or a client-supplied X-Request-Id), it's reused as-is so log
@@ -72,11 +120,8 @@ func Request(ctx context.Context, incomingID string) (context.Context, string) {
 	if reqId == "" {
 		reqId = uuid.New().String()
 	}
-	l := initLogger().With(
-		zap.String("request_id", reqId),
-	)
 	ctx = context.WithValue(ctx, requestIDKey{}, reqId)
-	return withContext(ctx, &customLogger{l}), reqId
+	return withContext(ctx, newCtxLogger(initLogger(), []zap.Field{zap.String("request_id", reqId)})), reqId
 }
 
 type requestIDKey struct{}
@@ -103,24 +148,39 @@ func withContext(ctx context.Context, l *customLogger) context.Context {
 }
 
 func (l *customLogger) Info(msg string, fields ...zap.Field) {
-	l.Logger.Info(msg, sanitizeFields(fields)...)
+	l.Logger.Info(msg, sanitizeFields(l.dedupe(fields))...)
 }
 
 func (l *customLogger) Warn(msg string, fields ...zap.Field) {
-	l.Logger.Warn(msg, sanitizeFields(fields)...)
+	l.Logger.Warn(msg, sanitizeFields(l.dedupe(fields))...)
 }
 
 func (l *customLogger) Error(err error, fields ...zap.Field) {
 	fields = append(fields, zap.Error(err))
-	l.Logger.Error(err.Error(), sanitizeFields(fields)...)
+	l.Logger.Error(err.Error(), sanitizeFields(l.dedupe(fields))...)
 }
 
 func (l *customLogger) Fatal(msg string, fields ...zap.Field) {
-	l.Logger.Fatal(msg, sanitizeFields(fields)...)
+	l.Logger.Fatal(msg, sanitizeFields(l.dedupe(fields))...)
 }
 
 func (l *customLogger) Debug(msg string, fields ...zap.Field) {
-	l.Logger.Debug(msg, sanitizeFields(fields)...)
+	l.Logger.Debug(msg, sanitizeFields(l.dedupe(fields))...)
+}
+
+// dedupe drops the call-site fields whose key is already set by the context logger.
+func (l *customLogger) dedupe(fields []zap.Field) []zap.Field {
+	if len(l.ctxKeys) == 0 {
+		return fields
+	}
+	out := make([]zap.Field, 0, len(fields))
+	for _, f := range fields {
+		if _, ok := l.ctxKeys[f.Key]; ok {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 func (l *customLogger) Sync() {
