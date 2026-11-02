@@ -79,9 +79,3 @@ type ListResponse[T any] struct {
 	PageSize   int64 `json:"pageSize"`
 	Page       int64 `json:"page"`
 }
-
-type WorkExecutionTimeResponse struct {
-	WorkID               string  `json:"workId"`
-	WorkName             string  `json:"workName"`
-	AverageExecutionTime float64 `json:"averageExecutionTimeHours"`
-}

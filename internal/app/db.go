@@ -49,8 +49,3 @@ func DBConnect() *sql.DB {
 
 	return instance
 }
-
-func ConnectWithDB(db *sql.DB) {
-	once.Do(func() {})
-	instance = db
-}
