@@ -49,8 +49,7 @@ func GinHandler[T any](cb func(context.Context, *http.Request) (T, error), custo
 
 		resp, err := cb(ctx, c.Request)
 		if err != nil {
-			status, errResp := web.Error(err)
-			c.JSON(status, errResp)
+			writeError(ctx, c, err)
 			return
 		}
 
@@ -71,8 +70,7 @@ func GinOnlyErrorHandler(cb func(context.Context, *http.Request) error, customSt
 		}
 
 		if err := cb(ctx, c.Request); err != nil {
-			status, errResp := web.Error(err)
-			c.JSON(status, errResp)
+			writeError(ctx, c, err)
 			return
 		}
 
@@ -84,6 +82,16 @@ func GinOnlyErrorHandler(cb func(context.Context, *http.Request) error, customSt
 		c.Status(customStatus[0])
 		c.Writer.WriteHeaderNow()
 	}
+}
+
+// writeError answers err with the public body and logs the full cause (with request_id) when the
+// error is server-side (5xx, or an infrastructure 409/422).
+func writeError(ctx context.Context, c *gin.Context, err error) {
+	status, body, logIt := web.Describe(err)
+	if logIt {
+		logger.Of(ctx).Error(err, zap.Int("status", status))
+	}
+	c.JSON(status, body)
 }
 
 func mountSwaggerUI(router *gin.Engine) {
