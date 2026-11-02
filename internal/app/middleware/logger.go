@@ -34,7 +34,7 @@ func Logger() gin.HandlerFunc {
 			zap.String("ip", c.ClientIP()),
 		}
 
-		logger.Of(ctx).Info("starting request", fields...)
+		logger.Of(ctx).Info("request.started", fields...)
 
 		c.Next()
 
@@ -49,6 +49,6 @@ func Logger() gin.HandlerFunc {
 			return
 		}
 
-		logger.Of(ctx).Info("ending request", fields...)
+		logger.Of(ctx).Info("request.completed", fields...)
 	}
 }

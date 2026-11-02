@@ -14,6 +14,7 @@ data:
   POSTGRES_SSLMODE: "require"
   AWS_REGION: "us-east-1"
   LOG_LEVEL: "INFO"
+  SERVICE_NAME: "service-order-service"
   PORT: "8086"
   CUSTOMER_URL: "http://customer-service:8081"
   CATALOG_URL: "http://catalog-service:8082"

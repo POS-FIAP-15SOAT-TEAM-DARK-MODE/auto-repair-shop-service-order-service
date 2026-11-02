@@ -11,7 +11,7 @@ table and the always-applied rules. Never duplicate rule content in them.
   rules/               # topic-scoped rule files — open on demand
     architecture.md        layers, UoW, saga orchestrator, repository connection pattern
     domain.md              ubiquitous language, status lifecycle, saga rules, RBAC, snapshots
-    go-conventions.md      Go idioms, decimal, ULID/UUID, no framework leakage, mockery
+    go-conventions.md      Go idioms, decimal, ULID/UUID, no framework leakage, error mapping
     database.md            PostgreSQL conventions, migrations, outbox/processed_message
     api.md                 endpoints with roles, error format, Swagger
     testing.md             coverage gates, unit vs integration patterns
@@ -31,7 +31,7 @@ table and the always-applied rules. Never duplicate rule content in them.
 |---|---|---|
 | Architecture | `rules/architecture.md` | Layers, UoW, saga orchestrator, DI in bootstrap |
 | Domain & Business Rules | `rules/domain.md` | Status lifecycle, saga, roles, snapshots, total formula |
-| Go Conventions | `rules/go-conventions.md` | Stack, IDs, decimal, no framework leakage, mockery |
+| Go Conventions | `rules/go-conventions.md` | Stack, IDs, decimal, no framework leakage, error mapping |
 | Database | `rules/database.md` | NUMERIC(10,2), migrations, saga tables, indexes |
 | API | `rules/api.md` | Public endpoints with roles, error format, Swagger |
 | Testing | `rules/testing.md` | 80% total / 90% saga and domain, unit and integration |

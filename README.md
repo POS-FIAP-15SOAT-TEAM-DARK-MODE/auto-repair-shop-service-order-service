@@ -132,6 +132,28 @@ Sem ele, as chamadas REST para Customer e Catalog falham com `502`.
 Outros alvos: `make test`, `make test-integration` (exige Postgres e MiniStack), `make coverage`,
 `make run` (sem Docker, exige um Postgres e as variáveis do `.env`).
 
+## Testes e cobertura
+
+```bash
+make test              # testes unitários com o race detector (LOG_LEVEL=PANIC)
+make test-integration  # integração: exige Postgres e MiniStack (ou o job da CI)
+make coverage          # perfil de cobertura (coverage.out) e o total
+```
+
+Medição de 2026-11-01 com `go test ./... -count=1 -cover`. O repositório não gera mocks, então o total
+é o total de todos os pacotes (o filtro `/mocks/` do CI continua válido e não remove nada).
+
+| Escopo | Medido | Gate da CI |
+|---|---|---|
+| Total (statements) | **93.3%** | ≥ 80% |
+| `internal/saga` | 99.0% | ≥ 90% |
+| `internal/service_order/domain` | 100.0% | ≥ 90% |
+
+Pacotes abaixo de 90%: `internal/app` (36.4%: a montagem em `bootstrap` e a conexão com o banco não têm
+teste unitário), `internal/clients` (85.5%) e `internal/pkg/db` (84.2%). Não têm teste unitário:
+`cmd/service`, `internal/app/bootstrap` e `internal/pkg/metrics`. Os testes de integração (`-tags=integration`)
+não entram nesses números; rodam na CI.
+
 ## Configuração
 
 Variáveis em `.env.example`. Os segredos (`POSTGRES_*`, `JWT_SECRET`, `INTERNAL_TOKEN`) vêm do

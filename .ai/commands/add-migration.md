@@ -24,7 +24,7 @@ Reverse the `up.sql` in the reverse order: indexes, then foreign keys, columns a
 
 ## 5. Apply and Verify
 ```bash
-make migrate-up        # uses MIGRATE_DATABASE from the Makefile target
+make migrate-up        # uses POSTGRES_* from .env (see Makefile)
 migrate -path migrations -database "$DSN" version
 ```
 Integration tests in CI apply all migrations before running.

@@ -26,8 +26,8 @@ func (n *logStatusNotifier) NotifyStatusChange(ctx context.Context, msg domain.S
 		zap.String("entity", "service_order"),
 		zap.String("service_order_id", msg.ServiceOrderID),
 		zap.String("recipient", maskEmail(msg.CustomerEmail)),
-		zap.String("previous_status", previous),
-		zap.String("new_status", msg.NewStatus.String()),
+		zap.String("from_status", previous),
+		zap.String("to_status", msg.NewStatus.String()),
 		zap.String("subject", statusEmailSubject(msg.NewStatus)),
 	)
 	return nil

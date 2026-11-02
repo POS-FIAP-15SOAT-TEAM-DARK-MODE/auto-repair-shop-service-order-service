@@ -3,17 +3,23 @@ package messaging
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/logger"
+	"github.com/POS-FIAP-15SOAT-TEAM-DARK-MODE/auto-repair-shop-service-order-service/internal/pkg/metrics"
 	"go.uber.org/zap"
 )
 
 const (
 	selectPendingQuery = `SELECT id, topic, target, type, body FROM outbox WHERE published_at IS NULL ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED`
 	markPublishedQuery = `UPDATE outbox SET published_at = now() WHERE id = $1`
+	countPendingQuery  = `SELECT count(*) FROM outbox WHERE published_at IS NULL`
+
+	// pendingRefreshInterval is how often outbox_pending is read from the table.
+	pendingRefreshInterval = 15 * time.Second
 )
 
 // Relay publishes outbox rows to SNS. A row is marked as published only after a successful Publish.
@@ -30,20 +36,38 @@ func NewRelay(db *sql.DB, publisher Publisher, topics map[string]string) *Relay 
 	return &Relay{db: db, publisher: publisher, topics: topics, interval: time.Second, batchSize: 20}
 }
 
-// Run calls RunOnce every interval until ctx is cancelled.
+// Run calls RunOnce every interval until ctx is cancelled. outbox_pending is refreshed every
+// pendingRefreshInterval.
 func (r *Relay) Run(ctx context.Context) error {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
+	refresh := time.NewTicker(pendingRefreshInterval)
+	defer refresh.Stop()
+	r.refreshPending(ctx)
 	for {
 		if _, err := r.RunOnce(ctx); err != nil && ctx.Err() == nil {
-			logger.Global().Error(err, zap.String("component", "outbox-relay"))
+			logger.Of(ctx).Error(err, zap.String("component", "outbox-relay"))
 		}
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-refresh.C:
+			r.refreshPending(ctx)
 		case <-ticker.C:
 		}
 	}
+}
+
+// refreshPending sets outbox_pending to the number of unpublished rows.
+func (r *Relay) refreshPending(ctx context.Context) {
+	var pending int64
+	if err := r.db.QueryRowContext(ctx, countPendingQuery).Scan(&pending); err != nil {
+		if ctx.Err() == nil {
+			logger.Of(ctx).Error(err, zap.String("component", "outbox-relay"))
+		}
+		return
+	}
+	metrics.OutboxPending.Set(float64(pending))
 }
 
 type pendingRow struct {
@@ -77,7 +101,20 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 			continue
 		}
 
+		var env Envelope
+		if err := json.Unmarshal([]byte(row.body), &env); err != nil {
+			errs = append(errs, fmt.Errorf("outbox row %d: body: %w", row.id, err))
+			continue
+		}
+		rowCtx := logger.WithFields(ctx, env.LogFields()...)
+
 		attrs := map[string]string{"type": row.typ}
+		if env.MessageID != "" {
+			attrs["message_id"] = env.MessageID
+		}
+		if env.SagaID != "" {
+			attrs["saga_id"] = env.SagaID
+		}
 		if row.target.Valid {
 			attrs["target"] = row.target.String
 		}
@@ -85,6 +122,7 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 			errs = append(errs, fmt.Errorf("outbox row %d: publish: %w", row.id, err))
 			continue
 		}
+		logger.Of(rowCtx).Info("message.published", zap.String("type", row.typ), zap.String("topic", row.topic))
 
 		if _, err := tx.ExecContext(ctx, markPublishedQuery, row.id); err != nil {
 			return published, err

@@ -69,12 +69,12 @@ func (t *Transport) Do(ctx context.Context, method, path string, body, out any, 
 	for attempt := 0; attempt < attempts; attempt++ {
 		status, data, err := t.send(ctx, method, path, raw)
 		if err != nil {
-			logger.Of(ctx).Warn("internal call failed",
+			logger.Of(ctx).Warn("internal_call.failed",
 				zap.String("method", method), zap.String("path", path), zap.Error(err))
 			continue
 		}
 		if status >= 500 {
-			logger.Of(ctx).Warn("internal call returned 5xx",
+			logger.Of(ctx).Warn("internal_call.server_error",
 				zap.String("method", method), zap.String("path", path), zap.Int("status", status))
 			continue
 		}

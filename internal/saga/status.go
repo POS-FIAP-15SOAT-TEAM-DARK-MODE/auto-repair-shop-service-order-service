@@ -61,19 +61,21 @@ func (c *StatusChanger) Change(ctx context.Context, so *domain.ServiceOrder, nex
 }
 
 func (c *StatusChanger) publish(ctx context.Context, so *domain.ServiceOrder, prev *domain.SERVICE_ORDER_STATUS, next domain.SERVICE_ORDER_STATUS, reason string, m Meta) error {
-	if m.SagaID == "" {
-		m.SagaID = uuid.NewString()
+	sagaID := m.SagaID
+	if sagaID == "" {
+		sagaID = uuid.NewString()
 	}
 	payload := statusChangedPayload{New: next.String(), TotalAmount: so.TotalAmount.StringFixed(2)}
+	fromStatus := ""
 	if prev != nil {
-		p := prev.String()
-		payload.Previous = &p
+		fromStatus = prev.String()
+		payload.Previous = &fromStatus
 	}
 	if reason != "" {
 		payload.Reason = &reason
 	}
 
-	env, err := messaging.NewEnvelope(EvtServiceOrderStatusChanged, m.SagaID, so.ID, m.RequestID, payload)
+	env, err := messaging.NewEnvelope(EvtServiceOrderStatusChanged, sagaID, so.ID, m.RequestID, payload)
 	if err != nil {
 		return err
 	}
@@ -81,11 +83,15 @@ func (c *StatusChanger) publish(ctx context.Context, so *domain.ServiceOrder, pr
 		return err
 	}
 
-	logger.Of(ctx).Info("service_order.status_transition",
-		zap.String("entity", "service_order"),
+	fields := []zap.Field{
 		zap.String("service_order_id", so.ID),
-		zap.String("new_status", next.String()),
-	)
+		zap.String("from_status", fromStatus),
+		zap.String("to_status", next.String()),
+	}
+	if m.SagaID != "" {
+		fields = append(fields, zap.String("saga_id", m.SagaID))
+	}
+	logger.Of(ctx).Info("service_order.status_transition", fields...)
 
 	msg := domain.StatusNotification{
 		ServiceOrderID: so.ID,
@@ -100,7 +106,7 @@ func (c *StatusChanger) publish(ctx context.Context, so *domain.ServiceOrder, pr
 			metrics.ServiceOrderNotificationFailuresTotal.Inc()
 			logger.Of(commitCtx).Warn("service_order.status_notification_failed",
 				zap.String("service_order_id", msg.ServiceOrderID),
-				zap.String("new_status", next.String()),
+				zap.String("to_status", next.String()),
 				zap.Error(err),
 			)
 		}

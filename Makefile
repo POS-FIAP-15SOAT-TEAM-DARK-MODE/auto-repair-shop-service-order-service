@@ -33,7 +33,4 @@ migrate-up:
 migrate-down:
 	migrate -path migrations -database "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/service_order?sslmode=disable" down
 
-mockgen:
-	go generate ./...
-
-.PHONY: run test test-integration coverage up down migrate-install migrate-up migrate-down mockgen
+.PHONY: run test test-integration coverage up down migrate-install migrate-up migrate-down

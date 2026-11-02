@@ -8,8 +8,9 @@
 
 Types: `feat` · `fix` · `refactor` · `test` · `chore` · `docs` · `perf` · `style` · `revert` · `ci`
 
-Scopes used in this repo: `service-order` · `saga` · `messaging` · `clients` · `domain` · `api` · `db` ·
-`k8s` · `compose` · `local` · `docker` · `bootstrap` · `ai`.
+Scopes: `service-order` (aggregate, service, controller) · `saga` · `messaging` · `clients` · `domain` · `api` ·
+`db` · `k8s` · `compose` · `local` · `docker` · `bootstrap` · `ai`. Also used in the history: `web`, `auth`,
+`middleware`, `routing`, `swagger`, `integration`, `deps`, `lint`, `adr`, `readme`.
 
 Rules:
 - Subject up to 72 characters, lowercase start, no trailing period, imperative mood.
@@ -36,7 +37,6 @@ make up                # docker compose up --build (seeds .env, starts the stubs
 make down              # docker compose down -v
 make migrate-up        # apply pending migrations
 make migrate-down      # roll back one migration
-make mockgen           # regenerate mocks (go generate ./...)
 ```
 
 ## CI (`.github/workflows`)

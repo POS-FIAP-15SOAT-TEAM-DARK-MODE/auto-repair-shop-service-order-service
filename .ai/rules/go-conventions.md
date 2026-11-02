@@ -1,8 +1,8 @@
 # Go Conventions
 
 ## Tech Stack
-Go 1.26 · Gin · PostgreSQL 15 · `lib/pq` (raw SQL, no ORM) · `golang-migrate` · `golang-jwt/jwt/v5` ·
-Zap · Testify · mockery v2 · `shopspring/decimal` · `google/uuid` · `oklog/ulid/v2`.
+Go 1.27 · Gin · PostgreSQL 15 · `lib/pq` (raw SQL, no ORM) · `golang-migrate` (CLI) · `golang-jwt/jwt/v5` ·
+Zap · Testify · `shopspring/decimal` · `google/uuid` · `oklog/ulid/v2`.
 
 ## IDs
 - `oklog/ulid/v2` for `service_order` ids (sortable by creation time, stored as `VARCHAR(26)`).
@@ -18,16 +18,19 @@ Database column type: `NUMERIC(10,2)`.
 - Service and saga: depend on domain interfaces and `internal/pkg/uow`, not on HTTP or SQL types.
 - Gin types stay in `controller.go`, `routes.go` and `internal/app/routing`.
 
-## Mocks
-`internal/pkg/uow/uow.go` carries the `//go:generate` directive for the `Executor` mock
-(`internal/pkg/uow/mocks/`). Other interfaces get a directive next to their declaration.
-Run `make mockgen`. Never edit generated files by hand.
+## Test Doubles
+No mocks are generated. Unit tests use the in-memory implementations that satisfy the same
+interfaces (`repository.NewInMemory()`, `saga.NewMemoryRepository()`, `saga.NewMemoryOutbox()`,
+`uow.NewInMemoryUoW()`). Add a generator only when a test cannot use them, and document it here and in
+`Makefile`.
 
 ## Error Patterns
 - Domain errors are sentinels (`var ErrXxx = errors.New(...)`) in the domain package.
 - HTTP status is registered next to the sentinels (`internal/service_order/http_errors.go`) with
   `web.RegisterErrorStatus`; handlers never switch on error text.
 - Upstream failures become `ErrUpstreamUnavailable` (502); never expose internal error details.
+- Input validation sentinels are registered with `web.RegisterValidationErrors` and answer 400 with the `errors` list.
+- Response bodies are `{"code", "error"}`, or `{"code", "errors"}` for 400 (see `rules/api.md`).
 
 ## Configuration
 Read through `internal/pkg/env` (`GetString`, `GetInt`, `GetTimeDuration`). Required settings are

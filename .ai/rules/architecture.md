@@ -7,7 +7,7 @@ HTTP → routes.go / controller.go (internal/service_order)
            → service.go (use cases, status rules)  ──→ saga orchestrator (internal/saga)
            → repository/ (Postgres and in-memory)  ──→ PostgreSQL (service_order)
            → clients/ (Customer and Catalog REST)
-Messaging: pkg/messaging relay (outbox → SNS) and consumer (SQS → orchestrator)
+Messaging: internal/pkg/messaging relay (outbox → SNS) and consumer (SQS → orchestrator)
 Domain (internal/service_order/domain): framework-free types, errors, interfaces.
 ```
 

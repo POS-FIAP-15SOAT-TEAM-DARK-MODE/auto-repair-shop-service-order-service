@@ -29,7 +29,6 @@ func DBConnect() *sql.DB {
 			env.GetString("POSTGRES_SSLMODE", "disable"),
 		)
 
-		logger.Global().Debug("Database conn str", zap.String("value", connStr))
 		conn, err := sqlOpenFn("postgres", connStr)
 		if err != nil {
 			if conn != nil {
@@ -48,9 +47,4 @@ func DBConnect() *sql.DB {
 	})
 
 	return instance
-}
-
-func ConnectWithDB(db *sql.DB) {
-	once.Do(func() {})
-	instance = db
 }

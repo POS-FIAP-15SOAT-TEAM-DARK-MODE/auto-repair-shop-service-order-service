@@ -14,7 +14,7 @@ var (
 	ErrInvalidSupplyID         = errors.New("invalid supply id")
 	ErrInvalidSupplyAmount     = errors.New("supply amount must be greater than zero")
 	ErrUpstreamValidation      = errors.New("upstream rejected the request as invalid")
-	ErrUpstreamUnavailable     = errors.New("upstream service unavailable")
+	ErrUpstreamUnavailable     = errors.New("upstream unavailable")
 )
 
 // Service order errors.
