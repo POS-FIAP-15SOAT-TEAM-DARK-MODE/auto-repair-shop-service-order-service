@@ -36,7 +36,7 @@ func TestInternalAuth(t *testing.T) {
 
 			assert.Equal(t, tt.wantCode, rec.Code)
 			if tt.wantCode == http.StatusUnauthorized {
-				assert.JSONEq(t, `{"code":401,"errors":["unauthorized"]}`, rec.Body.String())
+				assert.JSONEq(t, `{"code":401,"error":"Unauthorized"}`, rec.Body.String())
 			}
 		})
 	}

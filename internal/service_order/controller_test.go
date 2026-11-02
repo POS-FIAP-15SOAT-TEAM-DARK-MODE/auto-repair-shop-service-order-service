@@ -119,7 +119,9 @@ func TestExpiredTokenIsUnauthorized(t *testing.T) {
 	f := newFixture(t)
 	tok, err := auth.GenerateToken("staff-1", []auth.Role{auth.ATTENDANT}, time.Now().Add(-time.Hour))
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusUnauthorized, call(newRouter(f), http.MethodGet, "/v1/service-order", "Bearer "+tok, "").Code)
+	rec := call(newRouter(f), http.MethodGet, "/v1/service-order", "Bearer "+tok, "")
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.JSONEq(t, `{"code":401,"error":"Token expired"}`, rec.Body.String())
 }
 
 func TestStatusEndpointIsPublic(t *testing.T) {

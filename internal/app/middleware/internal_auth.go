@@ -16,8 +16,8 @@ func InternalAuth(expected string) gin.HandlerFunc {
 		got := c.GetHeader(internalTokenHeader)
 		if expected == "" || subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code":   http.StatusUnauthorized,
-				"errors": []string{"unauthorized"},
+				"code":  http.StatusUnauthorized,
+				"error": "Unauthorized",
 			})
 			return
 		}
