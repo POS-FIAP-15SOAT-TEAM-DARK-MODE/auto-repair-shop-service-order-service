@@ -44,7 +44,7 @@ GET    /internal/service-orders/exists?customer_id= | ?vehicle_id=     X-Interna
 ```json
 { "code": 409, "errors": ["service order is not in NEW status"] }
 ```
-`error` (single message) is used by some statuses. Messages never contain CPF, CNPJ, tokens or stack traces.
+`errors` (list) is used only for 400 validation. Every other status answers `error` (single message): domain messages, or the fixed `conflict`, `invalid data`, `internal server error` for infrastructure failures. Bodies never contain causes, driver messages, CPF, CNPJ, tokens or stack traces; the full cause goes to the server log.
 
 | HTTP | Meaning in this service |
 |---|---|
