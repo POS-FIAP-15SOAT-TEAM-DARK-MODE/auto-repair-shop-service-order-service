@@ -1,0 +1,14 @@
+# <type>(<scope>): <short description>
+# |<---- max 72 characters ---->|
+#
+# Types: feat | fix | refactor | test | chore | docs | perf | style | revert | ci
+#
+# Scopes: service-order | saga | messaging | clients | domain | api | db |
+#         k8s | compose | local | docker | bootstrap | ai
+#
+# --- Examples ---
+# feat(saga): add timeout compensation for the payment step
+# fix(messaging): ignore replies whose saga is not running
+# refactor(service-order): move price recalculation into the transaction
+# test(saga): cover cancel at each saga step
+# chore(compose): update postgres image version

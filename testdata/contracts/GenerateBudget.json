@@ -1,0 +1,26 @@
+{
+  "message_id": "b7a1c6f0-2f64-4f6e-9a49-0d5a0b1e6c01",
+  "saga_id": "0f3c9a2e-6a1d-4a53-8a6e-5d3b1f2c7e90",
+  "type": "GenerateBudget",
+  "occurred_at": "2026-11-01T12:00:00Z",
+  "service_order_id": "01JD8Z4R3Q8M2V7K5N9XWABCDE",
+  "request_id": "2c5e1f0a-9d77-4b2c-a0c1-3f8e6b7d1a22",
+  "payload": {
+    "customer_user_id": "3b123072-5ad5-4df8-8d3b-3c2770f11b2a",
+    "works": [
+      {
+        "work_id": "9b2d6a0e-3c0f-4a0b-8d57-2a5f6a1c9e11",
+        "name": "Troca de óleo",
+        "unit_price": "150.00"
+      }
+    ],
+    "supplies": [
+      {
+        "supply_id": "22222222-2222-4222-8222-000000000001",
+        "name": "Filtro",
+        "quantity": 2,
+        "unit_price": "35.50"
+      }
+    ]
+  }
+}

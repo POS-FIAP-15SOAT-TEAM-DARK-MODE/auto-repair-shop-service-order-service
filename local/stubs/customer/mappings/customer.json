@@ -1,0 +1,38 @@
+{
+  "mappings": [
+    {
+      "name": "customer by id",
+      "request": { "method": "GET", "urlPathPattern": "/internal/customers/[^/]+" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "id": "44444444-4444-4444-8444-000000000002",
+          "user_id": "44444444-4444-4444-8444-000000000001",
+          "type": "INDIVIDUAL",
+          "name": "João Silva",
+          "email": "joao.silva@email.com",
+          "document": "52998224725",
+          "company_name": null,
+          "phone": "11999990001"
+        }
+      }
+    },
+    {
+      "name": "vehicle by id",
+      "request": { "method": "GET", "urlPathPattern": "/internal/vehicles/[^/]+" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "id": "44444444-4444-4444-8444-000000000003",
+          "customer_id": "44444444-4444-4444-8444-000000000002",
+          "license_plate": "ABC1D23",
+          "brand": "Fiat",
+          "model": "Uno",
+          "year": 2018
+        }
+      }
+    }
+  ]
+}
